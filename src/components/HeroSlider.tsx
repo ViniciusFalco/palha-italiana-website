@@ -6,27 +6,27 @@ import Slide from './Slide';
 const HeroSlider = () => {
   const slides = [
     {
-      title: 'PALHA ITALIANA',
-      subtitle: 'DOCES ARTESANAIS',
-      text: 'Descubra o sabor autêntico da palha italiana artesanal, feita com ingredientes selecionados e muito amor.',
-      backgroundImage: '/images/hero-1.jpg'
+      title: 'NOVIDADE:',
+      subtitle: 'Sabor Romeu e Julieta',
+      text: 'Dupla perfeita para dias frios e aconchegantes, proporcionando o irresistível doce de goiabada com queijo, finalizado com nossa deliciosa palha italiana.',
+      backgroundImage: '/images/romeu-julieta.jpg'
     },
     {
-      title: 'CAPPUCCINO',
-      subtitle: 'SABOR ESPECIAL',
-      text: 'O sabor mais pedido da casa! Uma combinação perfeita de café e creme que vai te surpreender.',
-      backgroundImage: '/images/hero-2.jpg'
+      title: 'NOSSO SABOR ITALIANO!',
+      subtitle: 'Cappuccino',
+      text: 'Nossa dupla de origem italiana mescla a forte presença do Cappuccino sendo docemente servido na palha italiana.',
+      backgroundImage: '/images/cappuccino-hero.jpg'
     },
     {
-      title: 'FAÇA SEU PEDIDO',
-      subtitle: 'ENTREGA RÁPIDA',
-      text: 'Peça agora e receba em até 2 horas! Qualidade e rapidez para satisfazer sua vontade de doce.',
-      backgroundImage: '/images/hero-3.jpg'
+      title: 'PRESENÇA CONFIRMADA:',
+      subtitle: 'FINC',
+      text: 'Estaremos presente no evento da FINC 2025 em Cataguases MG. Venha conhecer a feira e se deliciar nos nossos sabores de palha italianas.',
+      backgroundImage: '/images/finc-event.jpg'
     }
   ];
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <Swiper
         modules={[Autoplay, Pagination, Navigation]}
         spaceBetween={0}
@@ -40,7 +40,7 @@ const HeroSlider = () => {
         }}
         navigation={true}
         loop={true}
-        className="h-screen"
+        className="w-full h-screen"
       >
         {slides.map((slide, index) => (
           <SwiperSlide key={index}>

@@ -19,3 +19,37 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Estilos personalizados para o Swiper */
+.swiper-pagination-bullet {
+  background: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+}
+
+.swiper-pagination-bullet-active {
+  background: #FF007F !important;
+}
+
+.swiper-button-next,
+.swiper-button-prev {
+  color: #FF007F !important;
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+}
+
+.swiper-button-next:hover,
+.swiper-button-prev:hover {
+  opacity: 1;
+}
+
+/* Melhorar responsividade do Swiper */
+@media (max-width: 768px) {
+  .swiper-button-next,
+  .swiper-button-prev {
+    display: none;
+  }
+  
+  .swiper-pagination {
+    bottom: 20px !important;
+  }
+}

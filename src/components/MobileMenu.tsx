@@ -1,4 +1,5 @@
 
+import { useNavigate } from 'react-router-dom';
 import { FaTimes } from 'react-icons/fa';
 import OrderButton from './OrderButton';
 
@@ -8,6 +9,13 @@ interface MobileMenuProps {
 }
 
 const MobileMenu = ({ isOpen, onClose }: MobileMenuProps) => {
+  const navigate = useNavigate();
+
+  const goToHome = () => {
+    navigate('/');
+    onClose();
+  };
+
   return (
     <div
       className={`fixed inset-0 w-screen h-screen bg-background z-50 transform transition-transform duration-300 ease-in-out ${
@@ -24,19 +32,25 @@ const MobileMenu = ({ isOpen, onClose }: MobileMenuProps) => {
         </button>
 
         {/* Logo */}
-        <div className="text-white text-2xl font-bold mb-8">
-          Palha Italiana
+        <div 
+          className="cursor-pointer flex items-center mb-8"
+          onClick={goToHome}
+        >
+          <img 
+            src="/logo.png" 
+            alt="Palha Italiana" 
+            className="h-16 w-auto"
+          />
         </div>
 
         {/* Navigation Links */}
         <nav className="flex flex-col items-center space-y-6">
-          <a
-            href="#home"
-            onClick={onClose}
+          <button
+            onClick={goToHome}
             className="text-white hover:text-primary transition-colors text-lg"
           >
             Início
-          </a>
+          </button>
           <a
             href="#sabores"
             onClick={onClose}
