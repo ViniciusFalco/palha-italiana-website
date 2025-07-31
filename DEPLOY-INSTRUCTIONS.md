@@ -55,27 +55,37 @@ Após o deploy, você pode configurar:
 Após o deploy, verifique:
 
 - [ ] Site carrega corretamente
+- [ ] Logo aparece no header
+- [ ] Clique na logo leva para página inicial
 - [ ] Navegação funciona
-- [ ] Slider está funcionando
+- [ ] Slider está funcionando com os 3 novos slides
 - [ ] Carrinho de compras funciona
 - [ ] Checkout com cupom funciona
 - [ ] Integração WhatsApp funciona
 
 ### 6. Próximos Passos
 
-#### Adicionar Imagens
-1. Faça upload das imagens para `public/images/`
-2. Nomes necessários:
-   - `hero-1.jpg`, `hero-2.jpg`, `hero-3.jpg`
-   - `leite-ninho.jpg`, `chocolate.jpg`, `morango.jpg`
-   - `cappuccino.jpg`, `doce-leite.jpg`, `ninho-morango.jpg`
-   - `chocolate-branco.jpg`, `prestigio.jpg`
-   - `caixa-individual.jpg`, `caixa-6.jpg`, `caixa-12.jpg`
-   - `caixa-24.jpg`, `caixa-48.jpg`, `caixa-96.jpg`
-   - `kit-festa-50.jpg`, `kit-festa-100.jpg`
-   - `palha-individual.jpg`, `caixa-6-palhas.jpg`, `caixa-12-palhas.jpg`
-   - `torta-rustica-1kg.jpg`, `torta-rustica-2kg.jpg`
-   - `torta-personalizada-1kg.jpg`, `torta-personalizada-2kg.jpg`
+#### Adicionar Imagens Obrigatórias
+
+**IMAGENS DO SLIDER (PRIORIDADE ALTA):**
+- `romeu-julieta.jpg` - Slide 1: Sabor Romeu e Julieta
+- `cappuccino-hero.jpg` - Slide 2: Cappuccino
+- `finc-event.jpg` - Slide 3: Evento FINC
+
+**IMAGENS DOS SABORES:**
+- `leite-ninho.jpg`, `chocolate.jpg`, `morango.jpg`
+- `cappuccino.jpg`, `doce-leite.jpg`, `ninho-morango.jpg`
+- `chocolate-branco.jpg`, `prestigio.jpg`
+
+**IMAGENS DE EMBALAGEM:**
+- `caixa-individual.jpg`, `caixa-6.jpg`, `caixa-12.jpg`
+- `caixa-24.jpg`, `caixa-48.jpg`, `caixa-96.jpg`
+
+**IMAGENS DE PRODUTOS:**
+- `kit-festa-50.jpg`, `kit-festa-100.jpg`
+- `palha-individual.jpg`, `caixa-6-palhas.jpg`, `caixa-12-palhas.jpg`
+- `torta-rustica-1kg.jpg`, `torta-rustica-2kg.jpg`
+- `torta-personalizada-1kg.jpg`, `torta-personalizada-2kg.jpg`
 
 #### Adicionar Fonte Customizada
 1. Baixe a fonte Sour Gummy (.ttf)
@@ -106,6 +116,7 @@ git push
 **URL do site**: https://palha-italiana-website.vercel.app
 
 **Status**: ✅ Pronto para deploy
-**Tailwind CSS**: ✅ Funcionando
+**Logo**: ✅ Adicionada ao header
+**Slider**: ✅ Atualizado com 3 novos slides
 **Responsividade**: ✅ Implementada
 **Funcionalidades**: ✅ Todas implementadas 
