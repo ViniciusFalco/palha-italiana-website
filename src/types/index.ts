@@ -4,12 +4,18 @@ export interface CartItem {
   price: number;
   image: string;
   quantity: number;
+  flavor?: string;
+  coverage?: string;
+  packaging?: string;
+  size?: string;
+  address?: string;
 }
 
 export interface FormData {
   name: string;
   phone: string;
   address: string;
+  addressComplement?: string;
   coupon: string;
 }
 
@@ -18,6 +24,8 @@ export interface CheckoutProps {
   onClose: () => void;
   cartItems: CartItem[];
   onCompleteOrder: (formData: FormData, total: number) => void;
+  removeCartItem?: (index: number) => void;
+  clearCart?: () => void;
 }
 
 export interface MenuItemProps {
@@ -36,4 +44,29 @@ export interface SlideProps {
   subtitle: string;
   text: string;
   backgroundImage: string;
+}
+
+export interface ProductOption {
+  name: string;
+  description: string;
+  basePrice: number;
+  image: string;
+  category: 'packaging' | 'party' | 'cake';
+  requiresFlavor?: boolean;
+  requiresCoverage?: boolean;
+  requiresSize?: boolean;
+  sizeOptions?: { size: string; price: number }[];
+  quantityOptions?: number[];
+  allowCustomQuantity?: boolean;
+  minQuantity?: number;
+}
+
+export interface FlavorOption {
+  name: string;
+  value: string;
+}
+
+export interface CoverageOption {
+  name: string;
+  value: string;
 } 

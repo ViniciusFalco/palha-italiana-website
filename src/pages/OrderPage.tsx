@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import MenuItem from '../components/MenuItem';
 import Checkout from '../components/Checkout';
-import { FaShoppingCart } from 'react-icons/fa';
-import type { CartItem, FormData } from '../types';
+import ProductSelector from '../components/ProductSelector';
+import OptimizedImage from '../components/OptimizedImage';
+import { FaShoppingCart, FaPlus } from 'react-icons/fa';
+import type { CartItem, FormData, ProductOption } from '../types';
 
 const OrderPage = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
 
   // Check for pending order status on component mount
   useEffect(() => {
@@ -21,75 +23,123 @@ const OrderPage = () => {
     }
   }, []);
 
-  const menuItems: Record<string, Omit<CartItem, 'quantity'>[]> = {
-    festas: [
-      {
-        name: 'Kit Festa 50 Unidades',
-        description: '50 palhas italianas em embalagem especial para festas',
-        price: 120.00,
-        image: '/images/kit-festa-50.jpg'
-      },
-      {
-        name: 'Kit Festa 100 Unidades',
-        description: '100 palhas italianas em embalagem especial para festas',
-        price: 220.00,
-        image: '/images/kit-festa-100.jpg'
-      }
-    ],
-    palhas: [
-      {
-        name: 'Palha Italiana Individual',
-        description: 'Palha italiana artesanal, sabor à escolha',
-        price: 3.50,
-        image: '/images/palha-individual.jpg'
-      },
-      {
-        name: 'Caixa 6 Palhas Italianas',
-        description: '6 palhas italianas em caixa decorativa',
-        price: 18.00,
-        image: '/images/caixa-6-palhas.jpg'
-      },
-      {
-        name: 'Caixa 12 Palhas Italianas',
-        description: '12 palhas italianas em caixa decorativa',
-        price: 32.00,
-        image: '/images/caixa-12-palhas.jpg'
-      }
-    ],
-    tortas: [
-      {
-        name: 'Torta Rústica 1kg',
-        description: 'Torta rústica de palha italiana, 1kg',
-        price: 45.00,
-        image: '/images/torta-rustica-1kg.jpg'
-      },
-      {
-        name: 'Torta Rústica 2kg',
-        description: 'Torta rústica de palha italiana, 2kg',
-        price: 85.00,
-        image: '/images/torta-rustica-2kg.jpg'
-      },
-      {
-        name: 'Torta Personalizada 1kg',
-        description: 'Torta personalizada com cobertura à escolha, 1kg',
-        price: 55.00,
-        image: '/images/torta-personalizada-1kg.jpg'
-      },
-      {
-        name: 'Torta Personalizada 2kg',
-        description: 'Torta personalizada com cobertura à escolha, 2kg',
-        price: 105.00,
-        image: '/images/torta-personalizada-2kg.jpg'
-      }
-    ]
-  };
+  const productOptions: ProductOption[] = [
+    // EMBALAGENS
+    {
+      name: 'Embalagem com Fita',
+      description: 'Embalagem com fita - Tamanho 5x5',
+      basePrice: 3.50,
+      image: '/images/embalagem-fita.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    {
+      name: 'Embalagem Tipo Bem Casado/Bem Vivido',
+      description: 'Embalagem tipo bem casado/bem vivido - Tamanho 5x5',
+      basePrice: 4.50,
+      image: '/images/embalagem-jutaefita.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    {
+      name: 'Embalagem com Adesivos',
+      description: 'Embalagem com adesivos - Tamanho 5x5',
+      basePrice: 3.50,
+      image: '/images/embalagem-adesivos.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    {
+      name: 'Caixa Milk com Tema',
+      description: 'Caixa milk com tema à escolha',
+      basePrice: 14.90,
+      image: '/images/embalagem-milkcomtema.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    {
+      name: 'Palhas Juta e Fita',
+      description: 'Palhas juta e fita - Tamanho 5x5',
+      basePrice: 4.50,
+      image: '/images/embalagem-jutaefita.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    {
+      name: 'Palhas de Colher Pote 100ml',
+      description: 'Palhas de colher pote 100ml personalizada',
+      basePrice: 14.90,
+      image: '/images/embalagem-colherpote100ml.jpg',
+      category: 'packaging',
+      requiresFlavor: true
+    },
+    
+    // DOCES DE FESTAS
+    {
+      name: 'Docinho de Palha Italiana - Na Forminha',
+      description: 'Docinho de palha italiana na forminha - Preço por cento',
+      basePrice: 120.00,
+      image: '/images/docesdefestas-forminha.jpg',
+      category: 'party',
+      requiresFlavor: true,
+      quantityOptions: [50, 100, 150],
+      allowCustomQuantity: true,
+      minQuantity: 50
+    },
+    {
+      name: 'Docinho de Palha Italiana - Embaladas com Fita',
+      description: 'Docinho de palha italiana embaladas com fita - Preço por cento',
+      basePrice: 160.00,
+      image: '/images/docesdefestas-fita.jpg',
+      category: 'party',
+      requiresFlavor: true,
+      quantityOptions: [50, 100, 150],
+      allowCustomQuantity: true,
+      minQuantity: 50
+    },
+    
+    // TORTAS
+    {
+      name: 'Torta Rústica',
+      description: 'Torta rústica com cobertura simples',
+      basePrice: 69.90,
+      image: '/images/tortas-rustica.jpg',
+      category: 'cake',
+      requiresFlavor: true,
+      requiresSize: true,
+      sizeOptions: [
+        { size: '1Kg', price: 69.90 },
+        { size: '2Kg', price: 89.90 }
+      ]
+    },
+    {
+      name: 'Torta Personalizada',
+      description: 'Torta personalizada com cobertura à escolha',
+      basePrice: 79.90,
+      image: '/images/tortas-personalizada.jpg',
+      category: 'cake',
+      requiresFlavor: true,
+      requiresCoverage: true,
+      requiresSize: true,
+      sizeOptions: [
+        { size: '1Kg', price: 79.90 },
+        { size: '2Kg', price: 99.90 }
+      ]
+    }
+  ];
 
   const addToCart = (item: Omit<CartItem, 'quantity'>) => {
     setCartItems(prev => {
-      const existingItem = prev.find(cartItem => cartItem.name === item.name);
+      const existingItem = prev.find(cartItem => 
+        cartItem.name === item.name && 
+        cartItem.flavor === item.flavor && 
+        cartItem.coverage === item.coverage &&
+        cartItem.size === item.size
+      );
+      
       if (existingItem) {
         return prev.map(cartItem =>
-          cartItem.name === item.name
+          cartItem === existingItem
             ? { ...cartItem, quantity: cartItem.quantity + 1 }
             : cartItem
         );
@@ -98,13 +148,16 @@ const OrderPage = () => {
     });
   };
 
-
-
   const handleCompleteOrder = (formData: FormData, total: number) => {
     // Format order message for WhatsApp
-    const orderItems = cartItems.map(item => 
-      `${item.name} x${item.quantity} - R$ ${(item.price * item.quantity).toFixed(2)}`
-    ).join('\n');
+    const orderItems = cartItems.map(item => {
+      let itemText = `${item.name} x${item.quantity}`;
+      if (item.flavor) itemText += ` - Sabor: ${item.flavor}`;
+      if (item.coverage) itemText += ` - Cobertura: ${item.coverage}`;
+      if (item.size) itemText += ` - Tamanho: ${item.size}`;
+      itemText += ` - R$ ${(item.price * item.quantity).toFixed(2)}`;
+      return itemText;
+    }).join('\n');
 
     const message = `🍰 *NOVO PEDIDO - PALHA ITALIANA* 🍰
 
@@ -133,6 +186,14 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
 
   const cartTotal = cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
 
+  const getProductsByCategory = (category: 'packaging' | 'party' | 'cake') => {
+    return productOptions.filter(product => product.category === category);
+  };
+
+  const formatPrice = (price: number) => {
+    return `R$ ${price.toFixed(2).replace('.', ',')}`;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -146,28 +207,84 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
 
       <main className="pt-20 pb-24">
         <div className="container mx-auto px-4">
-          <h1 className="font-bebas text-5xl md:text-6xl text-white text-center mb-12">
+          <h1 className="font-bebas text-5xl md:text-6xl text-primary text-center mb-12 mt-4 md:mt-8">
             FAÇA SEU PEDIDO
           </h1>
 
           {/* Menu Sections */}
           <div className="space-y-16">
-            {/* FESTAS */}
-            <section>
-              <h2 className="font-bebas text-3xl text-primary mb-8">FESTAS</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {menuItems.festas.map((item, index) => (
-                  <MenuItem key={index} item={item} onAddToCart={addToCart} />
+            {/* EMBALAGENS */}
+            <section className="virtualized-container">
+              <h2 className="font-bebas text-3xl text-primary mb-8">EMBALAGENS</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 optimize-gpu">
+                {getProductsByCategory('packaging').map((product, index) => (
+                  <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div className="h-48 bg-gray-200 flex items-center justify-center">
+                      <img 
+                        src={product.image} 
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="font-bold text-lg text-gray-900 mb-2">{product.name}</h3>
+                      <p className="text-gray-600 text-sm mb-4">{product.description}</p>
+                      <div className="flex flex-col space-y-3">
+                        <span className="text-primary font-bold text-lg">
+                          {formatPrice(product.basePrice)}
+                        </span>
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className="w-full bg-primary text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors flex items-center justify-center space-x-2"
+                        >
+                          <FaPlus size={14} />
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
 
-            {/* DOCINHO DE PALHA ITALIANA */}
+            {/* DOCES DE FESTAS */}
             <section>
-              <h2 className="font-bebas text-3xl text-primary mb-8">DOCINHO DE PALHA ITALIANA</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {menuItems.palhas.map((item, index) => (
-                  <MenuItem key={index} item={item} onAddToCart={addToCart} />
+              <h2 className="font-bebas text-3xl text-primary mb-8">DOCES DE FESTAS</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {getProductsByCategory('party').map((product, index) => (
+                  <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div className="h-48 bg-gray-200 flex items-center justify-center">
+                      <img 
+                        src={product.image} 
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="font-bold text-lg text-gray-900 mb-2">{product.name}</h3>
+                      <p className="text-gray-600 text-sm mb-4">{product.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-primary font-bold text-lg">
+                          {formatPrice(product.basePrice)} o cento
+                        </span>
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors flex items-center space-x-2"
+                        >
+                          <FaPlus size={14} />
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
@@ -176,8 +293,36 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
             <section>
               <h2 className="font-bebas text-3xl text-primary mb-8">TORTAS</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {menuItems.tortas.map((item, index) => (
-                  <MenuItem key={index} item={item} onAddToCart={addToCart} />
+                {getProductsByCategory('cake').map((product, index) => (
+                  <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                    <div className="h-48 bg-gray-200 flex items-center justify-center">
+                      <img 
+                        src={product.image} 
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="font-bold text-lg text-gray-900 mb-2">{product.name}</h3>
+                      <p className="text-gray-600 text-sm mb-4">{product.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-primary font-bold text-lg">
+                          A partir de {formatPrice(product.basePrice)}
+                        </span>
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors flex items-center space-x-2"
+                        >
+                          <FaPlus size={14} />
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
@@ -210,12 +355,23 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
         </div>
       )}
 
+      {/* Product Selector Modal */}
+      {selectedProduct && (
+        <ProductSelector
+          product={selectedProduct}
+          onAddToCart={addToCart}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
+
       {/* Checkout Modal */}
       <Checkout
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         cartItems={cartItems}
         onCompleteOrder={handleCompleteOrder}
+        removeCartItem={(index) => setCartItems(prev => prev.filter((_, i) => i !== index))}
+        clearCart={() => setCartItems([])}
       />
 
       <Footer />

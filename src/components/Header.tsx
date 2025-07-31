@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FaBars } from 'react-icons/fa';
 import OrderButton from './OrderButton';
 import MobileMenu from './MobileMenu';
@@ -7,6 +7,7 @@ import MobileMenu from './MobileMenu';
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -31,27 +32,29 @@ const Header = () => {
           />
         </div>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center space-x-6">
+        {/* Desktop Navigation - Centralizado */}
+        <nav className="hidden md:flex items-center justify-center flex-1 space-x-8">
           <button
             onClick={goToHome}
-            className="text-white hover:text-primary transition-colors"
+            className="text-white hover:text-primary transition-colors font-medium"
           >
             Início
           </button>
-          <a href="#sabores" className="text-white hover:text-primary transition-colors">Sabores</a>
-          <a href="#encomendas" className="text-white hover:text-primary transition-colors">Encomendas</a>
-          <a href="#contato" className="text-white hover:text-primary transition-colors">Contato</a>
+          <a href="#sabores" className="text-white hover:text-primary transition-colors font-medium">Sabores</a>
+          <a href="#encomendas" className="text-white hover:text-primary transition-colors font-medium">Encomendas</a>
+          <a href="#contato" className="text-white hover:text-primary transition-colors font-medium">Contato</a>
         </nav>
 
         {/* Desktop Order Button */}
-        <div className="hidden md:block">
-          <OrderButton />
-        </div>
+        {location.pathname !== '/pedidos' && (
+          <div className="hidden md:block">
+            <OrderButton />
+          </div>
+        )}
 
         {/* Mobile Menu Button */}
         <div className="md:hidden flex items-center space-x-4">
-          <OrderButton />
+          {location.pathname !== '/pedidos' && <OrderButton />}
           <button
             onClick={toggleMobileMenu}
             className="text-white hover:text-primary transition-colors"
