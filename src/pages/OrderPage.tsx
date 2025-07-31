@@ -22,6 +22,14 @@ const OrderPage = () => {
     }
   }, []);
 
+  const updateItemQuantity = (index: number, newQuantity: number) => {
+    setCartItems(prevItems => {
+      const newItems = [...prevItems];
+      newItems[index] = { ...newItems[index], quantity: newQuantity };
+      return newItems;
+    });
+  };
+
   const productOptions: ProductOption[] = [
     // EMBALAGENS
     {
@@ -81,8 +89,6 @@ const OrderPage = () => {
       image: '/images/docesdefestas-forminha.jpg',
       category: 'party',
       requiresFlavor: true,
-      quantityOptions: [50, 100, 150],
-      allowCustomQuantity: true,
       minQuantity: 50
     },
     {
@@ -92,8 +98,6 @@ const OrderPage = () => {
       image: '/images/docesdefestas-fita.jpg',
       category: 'party',
       requiresFlavor: true,
-      quantityOptions: [50, 100, 150],
-      allowCustomQuantity: true,
       minQuantity: 50
     },
     
@@ -127,7 +131,7 @@ const OrderPage = () => {
     }
   ];
 
-  const addToCart = (item: Omit<CartItem, 'quantity'>) => {
+  const addToCart = (item: CartItem) => {
     setCartItems(prev => {
       const existingItem = prev.find(cartItem => 
         cartItem.name === item.name && 
@@ -139,11 +143,11 @@ const OrderPage = () => {
       if (existingItem) {
         return prev.map(cartItem =>
           cartItem === existingItem
-            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            ? { ...cartItem, quantity: cartItem.quantity + item.quantity }
             : cartItem
         );
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...prev, item];
     });
   };
 
@@ -158,20 +162,10 @@ const OrderPage = () => {
       return itemText;
     }).join('\n');
 
-    const message = `🍰 *NOVO PEDIDO - PALHA ITALIANA* 🍰
-
-👤 *Cliente:* ${formData.name}
-📱 *Telefone:* ${formData.phone}
-📍 *Endereço:* ${formData.address}
-
-🛒 *ITENS DO PEDIDO:*
-${orderItems}
-
-💰 *TOTAL:* R$ ${total.toFixed(2)}
-
-${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
-
-⏰ *Horário do pedido:* ${new Date().toLocaleString('pt-BR')}`;
+    // Sem emojis para garantir compatibilidade
+    let message = `*NOVO PEDIDO - PALHA ITALIANA*\n\n*Cliente:* ${formData.name}\n*Telefone:* ${formData.phone}\n*Endereço:* ${formData.address}\n\n*ITENS DO PEDIDO:*\n${orderItems}\n\n*TOTAL:* R$ ${total.toFixed(2)}\n`;
+    if (formData.coupon) message += `*Cupom aplicado:* ${formData.coupon}\n`;
+    message += `*Horário do pedido:* ${new Date().toLocaleString('pt-BR')}`;
 
     // Set order status and redirect to WhatsApp
     localStorage.setItem('order_status', 'pending');
@@ -370,6 +364,7 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
         cartItems={cartItems}
         onCompleteOrder={handleCompleteOrder}
         removeCartItem={(index) => setCartItems(prev => prev.filter((_, i) => i !== index))}
+        updateItemQuantity={updateItemQuantity}
         clearCart={() => setCartItems([])}
       />
 

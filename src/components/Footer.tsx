@@ -19,7 +19,7 @@ const Footer = () => {
           {/* Social Media Icons */}
           <div className="flex space-x-4 mb-4 md:mb-0">
             <a
-              href="https://wa.me/5532984669122"
+              href="https://wa.me/553221985767312"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white hover:text-primary transition-colors"
@@ -28,7 +28,9 @@ const Footer = () => {
               <FaWhatsapp size={24} />
             </a>
             <a
-              href="#"
+              href="https://www.instagram.com/palhaitalianasweetchild/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-white hover:text-primary transition-colors"
               aria-label="Instagram"
             >

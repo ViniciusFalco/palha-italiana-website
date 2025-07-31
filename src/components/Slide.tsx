@@ -2,45 +2,19 @@ import { useState } from 'react';
 import type { SlideProps } from '../types';
 
 const Slide = ({ title, subtitle, text, backgroundImage }: SlideProps) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  
   const isCappuccinoSlide = subtitle === 'Cappuccino';
   const hasBackgroundImage = backgroundImage && backgroundImage.trim() !== '';
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-  };
-
-  const handleImageError = () => {
-    setImageError(true);
-    setImageLoaded(true);
-  };
 
   return (
     <div className="relative w-full h-screen bg-black flex items-center justify-center">
       {/* Imagem de fundo apenas se existir */}
       {hasBackgroundImage && (
         <>
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-gray-900 animate-pulse"></div>
-          )}
-          
           <img
             src={backgroundImage}
             alt={`${title} - ${subtitle}`}
-            loading="lazy"
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            } ${imageError ? 'hidden' : ''}`}
+            className="absolute inset-0 w-full h-full object-cover"
           />
-          
-          {imageError && (
-            <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900"></div>
-          )}
-          
           <div className="absolute inset-0 bg-black bg-opacity-60"></div>
         </>
       )}

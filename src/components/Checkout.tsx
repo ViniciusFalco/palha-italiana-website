@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import type { CheckoutProps, FormData, CartItem } from '../types';
 
-const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem, clearCart }: CheckoutProps) => {
+const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem, clearCart, updateItemQuantity }: CheckoutProps) => {
   const [formData, setFormData] = useState<FormData>({
     name: '',
     phone: '',
@@ -86,27 +86,15 @@ const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem,
 
             <div>
               <label className="block text-white font-serif mb-2">Endereço:</label>
-              <div className="relative flex items-center">
-                <textarea
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  required
-                  rows={2}
-                  placeholder="Digite rua, bairro ou pesquise no mapa..."
-                  className="w-full p-3 rounded-lg bg-gray-800 text-white border border-gray-600 focus:border-primary focus:outline-none pr-12"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-3 text-primary hover:text-pink-600"
-                  title="Selecionar no mapa"
-                  onClick={() => alert('Seleção de endereço no mapa (Cataguases/MG) em breve!')}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.104 0 2-.896 2-2s-.896-2-2-2-2 .896-2 2 .896 2 2 2zm0 0v7m0-7c-4.418 0-8 1.79-8 4v5h16v-5c0-2.21-3.582-4-8-4z" />
-                  </svg>
-                </button>
-              </div>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                required
+                rows={2}
+                placeholder="Digite seu endereço completo..."
+                className="w-full p-3 rounded-lg bg-gray-800 text-white border border-gray-600 focus:border-primary focus:outline-none"
+              />
               <input
                 type="text"
                 name="addressComplement"
@@ -151,8 +139,33 @@ const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem,
               
               {cartItems.map((item: CartItem, index: number) => (
                 <div key={index} className="flex justify-between items-center text-white text-sm mb-2">
-                  <span>{item.name} x{item.quantity}</span>
-                  <span>R$ {(item.price * item.quantity).toFixed(2)}</span>
+                  <span className="flex-1">{item.name}</span>
+                  <div className="flex items-center space-x-3 mx-4">
+                    <button
+                      type="button"
+                      className="text-primary hover:text-pink-600 w-6 h-6 flex items-center justify-center"
+                      onClick={() => {
+                        if (item.quantity > 1 && updateItemQuantity) {
+                          updateItemQuantity(index, item.quantity - 1);
+                        }
+                      }}
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center">{item.quantity}</span>
+                    <button
+                      type="button"
+                      className="text-primary hover:text-pink-600 w-6 h-6 flex items-center justify-center"
+                      onClick={() => {
+                        if (updateItemQuantity) {
+                          updateItemQuantity(index, item.quantity + 1);
+                        }
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="w-24 text-right">R$ {(item.price * item.quantity).toFixed(2)}</span>
                   {typeof removeCartItem === 'function' && (
                     <button
                       type="button"

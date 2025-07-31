@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FaTimes, FaShoppingCart } from 'react-icons/fa';
+import { FaTimes, FaShoppingCart, FaPlus, FaMinus } from 'react-icons/fa';
 import type { ProductOption, CartItem, FlavorOption, CoverageOption } from '../types';
 
 interface ProductSelectorProps {
   product: ProductOption;
-  onAddToCart: (item: Omit<CartItem, 'quantity'>) => void;
+  onAddToCart: (item: CartItem) => void;
   onClose: () => void;
 }
 
@@ -31,19 +31,35 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
   const [selectedCoverage, setSelectedCoverage] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
-  const [customQuantity, setCustomQuantity] = useState<string>('');
   const [subtotal, setSubtotal] = useState<number>(0);
+
+  const handleIncreaseQuantity = () => {
+    setQuantity(prev => prev + 1);
+  };
+
+  const handleDecreaseQuantity = () => {
+    setQuantity(prev => prev > 1 ? prev - 1 : 1);
+  };
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value)) {
+      if (product.category === 'party') {
+        // Para doces de festa, mínimo de 50 unidades
+        if (value >= 50) {
+          setQuantity(value);
+        }
+      } else {
+        // Para outros produtos, mínimo de 1
+        if (value >= 1) {
+          setQuantity(value);
+        }
+      }
+    }
+  };
 
   // Calcular subtotal sempre que algo mudar
   useEffect(() => {
-    let currentQuantity = quantity;
-    if (product.allowCustomQuantity && customQuantity) {
-      const customQty = parseInt(customQuantity);
-      if (customQty >= (product.minQuantity || 50)) {
-        currentQuantity = customQty;
-      }
-    }
-
     let currentPrice = product.basePrice;
     if (product.requiresSize && selectedSize) {
       const sizeOption = product.sizeOptions?.find(opt => opt.size === selectedSize);
@@ -57,20 +73,17 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
       // Para doces de festa, o preço base é por cento (100 unidades)
       // Calculamos o valor proporcional baseado na quantidade
       const pricePerHundred = currentPrice;
-      const proportion = currentQuantity / 100;
+      const proportion = quantity / 100;
       setSubtotal(pricePerHundred * proportion);
     } else {
-      setSubtotal(currentPrice * currentQuantity);
+      setSubtotal(currentPrice * quantity);
     }
-  }, [selectedSize, quantity, customQuantity, product]);
+  }, [selectedSize, quantity, product]);
 
   const handleAddToCart = () => {
-    if (product.allowCustomQuantity && customQuantity) {
-      const customQty = parseInt(customQuantity);
-      if (customQty < (product.minQuantity || 50)) {
-        alert(`Quantidade mínima é ${product.minQuantity || 50}`);
-        return;
-      }
+    if (product.minQuantity && quantity < product.minQuantity) {
+      alert(`Quantidade mínima é ${product.minQuantity}`);
+      return;
     }
 
     let finalPrice = product.basePrice;
@@ -80,21 +93,21 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
         finalPrice = sizeOption.price;
       }
     }
-
-    // Para doces de festa, mantemos o preço por cento e calculamos a proporção
+    
+    // Para doces de festa, calcular o preço por unidade
     if (product.category === 'party') {
-      // O preço já está correto por cento, não precisamos ajustar aqui
-      // O cálculo da quantidade será feito no momento da exibição do carrinho
+      finalPrice = (product.basePrice / 100); // Converte o preço do cento para preço por unidade
     }
 
-    const cartItem: Omit<CartItem, 'quantity'> = {
+    const cartItem: CartItem = {
       name: product.name,
       description: product.description,
       price: finalPrice,
       image: product.image,
       flavor: selectedFlavor,
       coverage: selectedCoverage,
-      size: selectedSize
+      size: selectedSize,
+      quantity: quantity
     };
 
     onAddToCart(cartItem);
@@ -105,10 +118,7 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
     if (product.requiresFlavor && !selectedFlavor) return false;
     if (product.requiresCoverage && !selectedCoverage) return false;
     if (product.requiresSize && !selectedSize) return false;
-    if (product.allowCustomQuantity && customQuantity) {
-      const customQty = parseInt(customQuantity);
-      return customQty >= (product.minQuantity || 50);
-    }
+    if (product.minQuantity && quantity < product.minQuantity) return false;
     return true;
   };
 
@@ -228,71 +238,90 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
             <label className="block text-sm font-bold text-pink-600 mb-2">
               Quantidade <span className="text-red-500">*</span>
             </label>
-            {product.allowCustomQuantity ? (
-              <div className="space-y-3">
-                {product.category === 'party' && (
-                  <div className="flex gap-2 mb-2">
-                    {[50, 100, 200].map((qty) => (
-                      <button
-                        key={qty}
-                        onClick={() => setCustomQuantity(qty.toString())}
-                        className={`flex-1 py-2 px-4 rounded-lg border font-bold shadow-sm transition-all duration-150 text-base ${customQuantity === qty.toString() ? 'bg-pink-500 text-white border-pink-500 scale-105' : 'border-gray-300 hover:border-pink-500 text-gray-700 hover:bg-pink-50'}`}
-                      >
-                        {qty}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={customQuantity}
-                    onChange={(e) => setCustomQuantity(e.target.value)}
-                    min={product.minQuantity || 50}
-                    placeholder={`Mínimo: ${product.minQuantity || 50}`}
-                    style={{ backgroundColor: 'white', color: '#374151' }}
-                    className={`w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base pr-10 ${customQuantity && parseInt(customQuantity) < (product.minQuantity || 50) ? 'border-red-300' : 'border-gray-300'}`}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
-                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" fill="none"/><text x="10" y="15" textAnchor="middle" fontSize="10" fill="currentColor">#</text></svg>
-                  </span>
-                </div>
-              </div>
-            ) : product.quantityOptions ? (
-              <div className="relative">
-                <select
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value))}
-                  style={{ backgroundColor: 'white', color: '#374151' }}
-                  className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none text-base"
+            {product.category === 'party' && (
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setQuantity(50)}
+                  className={`py-2 px-4 rounded-lg transition-colors ${
+                    quantity === 50 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  }`}
                 >
-                  {product.quantityOptions.map((qty) => (
-                    <option key={qty} value={qty} style={{ color: '#111827' }}>
-                      {qty}
-                    </option>
-                  ))}
-                </select>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
-                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M7 7l3 3 3-3"/></svg>
-                </span>
+                  50 und
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuantity(100)}
+                  className={`py-2 px-4 rounded-lg transition-colors ${
+                    quantity === 100 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  }`}
+                >
+                  100 und
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuantity(200)}
+                  className={`py-2 px-4 rounded-lg transition-colors ${
+                    quantity === 200 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  }`}
+                >
+                  200 und
+                </button>
               </div>
-            ) : (
-              <div className="relative">
+            )}
+            <div className="flex items-center justify-center space-x-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (product.category === 'party') {
+                    setQuantity(prev => prev > 50 ? prev - 50 : 50);
+                  } else {
+                    setQuantity(prev => prev > 1 ? prev - 1 : 1);
+                  }
+                }}
+                className="w-12 h-12 flex items-center justify-center text-pink-600 hover:text-pink-700 bg-pink-100 hover:bg-pink-200 rounded-lg transition-colors"
+              >
+                <FaMinus size={16} />
+              </button>
+              <div className="relative w-24">
                 <input
                   type="number"
                   value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  min="1"
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value)) {
+                      if (product.category === 'party') {
+                        if (value >= 50) {
+                          setQuantity(value);
+                        }
+                      } else {
+                        if (value >= 1) {
+                          setQuantity(value);
+                        }
+                      }
+                    }
+                  }}
+                  min={product.category === 'party' ? "50" : "1"}
                   style={{ backgroundColor: 'white', color: '#374151' }}
-                  className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base pr-10"
+                  className="w-full p-3 text-center border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent text-lg font-medium"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
-                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" fill="none"/><text x="10" y="15" textAnchor="middle" fontSize="10" fill="currentColor">#</text></svg>
-                </span>
               </div>
-            )}
-            {product.allowCustomQuantity && customQuantity && parseInt(customQuantity) < (product.minQuantity || 50) && (
-              <p className="text-red-500 text-xs mt-2">Quantidade mínima é {product.minQuantity || 50}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (product.category === 'party') {
+                    setQuantity(prev => prev + 50);
+                  } else {
+                    setQuantity(prev => prev + 1);
+                  }
+                }}
+                className="w-12 h-12 flex items-center justify-center text-pink-600 hover:text-pink-700 bg-pink-100 hover:bg-pink-200 rounded-lg transition-colors"
+              >
+                <FaPlus size={16} />
+              </button>
+            </div>
+            {product.minQuantity && quantity < product.minQuantity && (
+              <p className="text-red-500 text-xs mt-2">Quantidade mínima é {product.minQuantity}</p>
             )}
           </div>
 

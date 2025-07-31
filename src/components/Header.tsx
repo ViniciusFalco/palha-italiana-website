@@ -40,9 +40,54 @@ const Header = () => {
           >
             Início
           </button>
-          <a href="#sabores" className="text-white hover:text-primary transition-colors font-medium">Sabores</a>
-          <a href="#encomendas" className="text-white hover:text-primary transition-colors font-medium">Encomendas</a>
-          <a href="#contato" className="text-white hover:text-primary transition-colors font-medium">Contato</a>
+          <button
+            onClick={() => {
+              const scrollWithOffset = (id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.pageYOffset - 80; // 80px de offset para header
+                  window.scrollTo({ top: y, behavior: 'smooth' });
+                }
+              };
+              if (location.pathname === '/pedidos') {
+                localStorage.setItem('scrollTo', 'sabores');
+                navigate('/');
+              } else {
+                scrollWithOffset('sabores');
+              }
+            }}
+            className="text-white hover:text-primary transition-colors font-medium"
+          >
+            Sabores
+          </button>
+          <button
+            onClick={() => {
+              const scrollWithOffset = (id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                  const y = el.getBoundingClientRect().top + window.pageYOffset - 80;
+                  window.scrollTo({ top: y, behavior: 'smooth' });
+                }
+              };
+              if (location.pathname === '/pedidos') {
+                localStorage.setItem('scrollTo', 'encomendas');
+                navigate('/');
+              } else {
+                scrollWithOffset('encomendas');
+              }
+            }}
+            className="text-white hover:text-primary transition-colors font-medium"
+          >
+            Encomendas
+          </button>
+          <a
+            href="https://wa.me/553221985767312"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white hover:text-primary transition-colors font-medium"
+          >
+            Contato
+          </a>
         </nav>
 
         {/* Desktop Order Button */}

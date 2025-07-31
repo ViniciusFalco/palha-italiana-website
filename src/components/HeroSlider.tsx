@@ -17,13 +17,13 @@ const HeroSlider = () => {
       title: 'NOSSO SABOR ITALIANO!',
       subtitle: 'Cappuccino',
       text: 'Nossa dupla de origem italiana mescla a forte presença do Cappuccino sendo docemente servido na palha italiana.',
-      backgroundImage: '' // Fundo preto temporário
+      backgroundImage: '/images/sabor-cappuccino.jpg'
     },
     {
       title: 'PRESENÇA CONFIRMADA:',
       subtitle: 'FINC',
       text: 'Estaremos presente no evento da FINC 2025 em Cataguases MG. Venha conhecer a feira e se deliciar nos nossos sabores de palha italianas.',
-      backgroundImage: '' // Fundo preto temporário
+      backgroundImage: '/images/finc2025.jpg'
     }
   ];
 

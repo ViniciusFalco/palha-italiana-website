@@ -51,22 +51,40 @@ const MobileMenu = ({ isOpen, onClose }: MobileMenuProps) => {
           >
             Início
           </button>
-          <a
-            href="#sabores"
-            onClick={onClose}
+          <button
+            onClick={() => {
+              if (window.location.pathname === '/pedidos') {
+                localStorage.setItem('scrollTo', 'sabores');
+                navigate('/');
+              } else {
+                const el = document.getElementById('sabores');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }
+              onClose();
+            }}
             className="text-white hover:text-primary transition-colors text-lg"
           >
             Sabores
-          </a>
-          <a
-            href="#encomendas"
-            onClick={onClose}
+          </button>
+          <button
+            onClick={() => {
+              if (window.location.pathname === '/pedidos') {
+                localStorage.setItem('scrollTo', 'encomendas');
+                navigate('/');
+              } else {
+                const el = document.getElementById('encomendas');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }
+              onClose();
+            }}
             className="text-white hover:text-primary transition-colors text-lg"
           >
             Encomendas
-          </a>
+          </button>
           <a
-            href="#contato"
+            href="https://wa.me/553221985767312"
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={onClose}
             className="text-white hover:text-primary transition-colors text-lg"
           >

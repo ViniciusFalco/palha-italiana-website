@@ -31,20 +31,26 @@ const Catering = () => {
             </div>
             
             <div className="grid md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <div className="text-primary text-3xl mb-2">🎂</div>
-                <h4 className="font-bebas text-xl text-white mb-2">TORTAS</h4>
-                <p className="font-serif text-gray-300 text-sm">Rústicas e personalizadas</p>
+              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+                <img src="/images/tortas-rustica.jpg" alt="Tortas" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
+                <div className="relative z-10">
+                  <h4 className="font-bebas text-xl text-white mb-2">TORTAS</h4>
+                  <p className="font-serif text-gray-300 text-sm">Rústicas e personalizadas</p>
+                </div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <div className="text-primary text-3xl mb-2">🎁</div>
-                <h4 className="font-bebas text-xl text-white mb-2">EMBALAGENS</h4>
-                <p className="font-serif text-gray-300 text-sm">Caixas decorativas especiais</p>
+              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+                <img src="/images/embalagem-jutaefita.jpg" alt="Embalagens" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
+                <div className="relative z-10">
+                  <h4 className="font-bebas text-xl text-white mb-2">EMBALAGENS</h4>
+                  <p className="font-serif text-gray-300 text-sm">Caixas decorativas especiais</p>
+                </div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <div className="text-primary text-3xl mb-2">🎉</div>
-                <h4 className="font-bebas text-xl text-white mb-2">FESTAS</h4>
-                <p className="font-serif text-gray-300 text-sm">Kits completos para eventos</p>
+              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+                <img src="/images/docesdefestas-forminha.jpg" alt="Festas" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
+                <div className="relative z-10">
+                  <h4 className="font-bebas text-xl text-white mb-2">FESTAS</h4>
+                  <p className="font-serif text-gray-300 text-sm">Kits completos para eventos</p>
+                </div>
               </div>
             </div>
 

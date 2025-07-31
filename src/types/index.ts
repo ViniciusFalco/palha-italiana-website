@@ -26,6 +26,7 @@ export interface CheckoutProps {
   onCompleteOrder: (formData: FormData, total: number) => void;
   removeCartItem?: (index: number) => void;
   clearCart?: () => void;
+  updateItemQuantity?: (index: number, quantity: number) => void;
 }
 
 export interface MenuItemProps {
@@ -56,8 +57,6 @@ export interface ProductOption {
   requiresCoverage?: boolean;
   requiresSize?: boolean;
   sizeOptions?: { size: string; price: number }[];
-  quantityOptions?: number[];
-  allowCustomQuantity?: boolean;
   minQuantity?: number;
 }
 

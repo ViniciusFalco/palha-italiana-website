@@ -8,8 +8,8 @@ const Flavors = () => {
     { name: 'Churros', image: '/images/sabor-churros.jpg', isFavorite: false },
     { name: 'Prestígio', image: '/images/sabor-prestigio.jpg', isFavorite: false },
     { name: 'Paçoca', image: '/images/sabor-pacoca.jpg', isFavorite: false },
-    { name: 'Cappuccino', image: '/images/sabor-cappuccino.jpg', isFavorite: false },
-    { name: 'Limão Siciliano', image: '/images/sabor-limao-siciliano.jpg', isFavorite: false },
+    { name: 'Cappuccino', image: '/images/sabor-cappuccino.jpg', isFavorite: false }, // Certifique-se de que o arquivo existe
+    { name: 'Limão Siciliano', image: '/images/sabor-limaosiciliano.jpg', isFavorite: false }, // Certifique-se de que o arquivo existe
     { name: 'Romeu e Julieta', image: '/images/sabor-romeuejulieta.jpg', isFavorite: false },
   ];
 
