@@ -5,12 +5,12 @@ const Flavors = () => {
   const flavors = [
     { name: 'Leite Ninho', image: '/images/leite-ninho.jpg', isFavorite: true },
     { name: 'Chocolate', image: '/images/chocolate.jpg', isFavorite: false },
-    { name: 'Morango', image: '/images/morango.jpg', isFavorite: false },
-    { name: 'Cappuccino', image: '/images/cappuccino.jpg', isFavorite: false },
-    { name: 'Doce de Leite', image: '/images/doce-leite.jpg', isFavorite: false },
-    { name: 'Ninho com Morango', image: '/images/ninho-morango.jpg', isFavorite: false },
-    { name: 'Chocolate Branco', image: '/images/chocolate-branco.jpg', isFavorite: false },
+    { name: 'Churros', image: '/images/churros.jpg', isFavorite: false },
     { name: 'Prestígio', image: '/images/prestigio.jpg', isFavorite: false },
+    { name: 'Paçoca', image: '/images/pacoca.jpg', isFavorite: false },
+    { name: 'Cappuccino', image: '/images/cappuccino.jpg', isFavorite: false },
+    { name: 'Limão Siciliano', image: '/images/limao-siciliano.jpg', isFavorite: false },
+    { name: 'Romeu e Julieta', image: '/images/romeu-julieta.jpg', isFavorite: false },
   ];
 
   return (

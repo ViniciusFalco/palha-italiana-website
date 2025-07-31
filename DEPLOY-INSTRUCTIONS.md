@@ -59,6 +59,7 @@ Após o deploy, verifique:
 - [ ] Clique na logo leva para página inicial
 - [ ] Navegação funciona
 - [ ] Slider está funcionando com os 3 novos slides
+- [ ] Seção de sabores mostra os 8 sabores corretos
 - [ ] Carrinho de compras funciona
 - [ ] Checkout com cupom funciona
 - [ ] Integração WhatsApp funciona
@@ -72,10 +73,15 @@ Após o deploy, verifique:
 - `cappuccino-hero.jpg` - Slide 2: Cappuccino
 - `finc-event.jpg` - Slide 3: Evento FINC
 
-**IMAGENS DOS SABORES:**
-- `leite-ninho.jpg`, `chocolate.jpg`, `morango.jpg`
-- `cappuccino.jpg`, `doce-leite.jpg`, `ninho-morango.jpg`
-- `chocolate-branco.jpg`, `prestigio.jpg`
+**IMAGENS DOS SABORES (PRIORIDADE ALTA):**
+- `leite-ninho.jpg` - Leite Ninho (Sabor favorito)
+- `chocolate.jpg` - Chocolate
+- `churros.jpg` - Churros
+- `prestigio.jpg` - Prestígio
+- `pacoca.jpg` - Paçoca
+- `cappuccino.jpg` - Cappuccino
+- `limao-siciliano.jpg` - Limão Siciliano
+- `romeu-julieta.jpg` - Romeu e Julieta
 
 **IMAGENS DE EMBALAGEM:**
 - `caixa-individual.jpg`, `caixa-6.jpg`, `caixa-12.jpg`
@@ -118,5 +124,6 @@ git push
 **Status**: ✅ Pronto para deploy
 **Logo**: ✅ Adicionada ao header
 **Slider**: ✅ Atualizado com 3 novos slides
+**Sabores**: ✅ Atualizados com 8 sabores corretos
 **Responsividade**: ✅ Implementada
 **Funcionalidades**: ✅ Todas implementadas 
