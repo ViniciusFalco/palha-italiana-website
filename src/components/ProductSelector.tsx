@@ -15,7 +15,7 @@ const FLAVORS: FlavorOption[] = [
   { name: 'Prestígio', value: 'PRESTIGIO' },
   { name: 'Paçoca', value: 'PACOCA' },
   { name: 'Cappuccino', value: 'CAPPUCINO' },
-  { name: 'Limão Siciliano', value: 'LIMAO_SICILIANO' }
+  { name: 'Limão Siciliano', value: 'LIMAO_SICILIANO' },
 ];
 
 const COVERAGES: CoverageOption[] = [
@@ -23,63 +23,34 @@ const COVERAGES: CoverageOption[] = [
   { name: 'Morango', value: 'MORANGO' },
   { name: 'Limão', value: 'LIMAO' },
   { name: 'Caramelo', value: 'CARAMELO' },
-  { name: 'Doce de Leite', value: 'DOCE_DE_LEITE' }
+  { name: 'Doce de Leite', value: 'DOCE_DE_LEITE' },
 ];
 
 const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps) => {
-  const [selectedFlavor, setSelectedFlavor] = useState<string>('');
-  const [selectedCoverage, setSelectedCoverage] = useState<string>('');
-  const [selectedSize, setSelectedSize] = useState<string>('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [subtotal, setSubtotal] = useState<number>(0);
+  const [selectedFlavor, setSelectedFlavor] = useState('');
+  const [selectedCoverage, setSelectedCoverage] = useState('');
+  const [selectedSize, setSelectedSize] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [subtotal, setSubtotal] = useState(0);
 
-  const handleIncreaseQuantity = () => {
-    setQuantity(prev => prev + 1);
-  };
-
-  const handleDecreaseQuantity = () => {
-    setQuantity(prev => prev > 1 ? prev - 1 : 1);
-  };
-
-  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value);
-    if (!isNaN(value)) {
-      if (product.category === 'party') {
-        // Para doces de festa, mínimo de 50 unidades
-        if (value >= 50) {
-          setQuantity(value);
-        }
-      } else {
-        // Para outros produtos, mínimo de 1
-        if (value >= 1) {
-          setQuantity(value);
-        }
-      }
-    }
-  };
-
-  // Calcular subtotal sempre que algo mudar
+  /* ---------- cálculo de subtotal ---------- */
   useEffect(() => {
     let currentPrice = product.basePrice;
+
     if (product.requiresSize && selectedSize) {
       const sizeOption = product.sizeOptions?.find(opt => opt.size === selectedSize);
-      if (sizeOption) {
-        currentPrice = sizeOption.price;
-      }
+      if (sizeOption) currentPrice = sizeOption.price;
     }
 
-    // Para doces de festa, calcular baseado no cento
     if (product.category === 'party') {
-      // Para doces de festa, o preço base é por cento (100 unidades)
-      // Calculamos o valor proporcional baseado na quantidade
-      const pricePerHundred = currentPrice;
-      const proportion = quantity / 100;
-      setSubtotal(pricePerHundred * proportion);
+      const proportion = quantity / 100; // preço por cento
+      setSubtotal(currentPrice * proportion);
     } else {
       setSubtotal(currentPrice * quantity);
     }
   }, [selectedSize, quantity, product]);
 
+  /* ---------- adicionar ao carrinho ---------- */
   const handleAddToCart = () => {
     if (product.minQuantity && quantity < product.minQuantity) {
       alert(`Quantidade mínima é ${product.minQuantity}`);
@@ -87,16 +58,14 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
     }
 
     let finalPrice = product.basePrice;
+
     if (product.requiresSize && selectedSize) {
       const sizeOption = product.sizeOptions?.find(opt => opt.size === selectedSize);
-      if (sizeOption) {
-        finalPrice = sizeOption.price;
-      }
+      if (sizeOption) finalPrice = sizeOption.price;
     }
-    
-    // Para doces de festa, calcular o preço por unidade
+
     if (product.category === 'party') {
-      finalPrice = (product.basePrice / 100); // Converte o preço do cento para preço por unidade
+      finalPrice = product.basePrice / 100; // preço por unidade
     }
 
     const cartItem: CartItem = {
@@ -107,24 +76,20 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
       flavor: selectedFlavor,
       coverage: selectedCoverage,
       size: selectedSize,
-      quantity: quantity
+      quantity,
     };
 
     onAddToCart(cartItem);
     onClose();
   };
 
-  const canAddToCart = () => {
-    if (product.requiresFlavor && !selectedFlavor) return false;
-    if (product.requiresCoverage && !selectedCoverage) return false;
-    if (product.requiresSize && !selectedSize) return false;
-    if (product.minQuantity && quantity < product.minQuantity) return false;
-    return true;
-  };
+  const canAddToCart =
+    (!product.requiresFlavor || selectedFlavor) &&
+    (!product.requiresCoverage || selectedCoverage) &&
+    (!product.requiresSize || selectedSize) &&
+    (!product.minQuantity || quantity >= product.minQuantity);
 
-  const formatPrice = (price: number) => {
-    return `R$ ${price.toFixed(2).replace('.', ',')}`;
-  };
+  const formatPrice = (price: number) => `R$ ${price.toFixed(2).replace('.', ',')}`;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -346,13 +311,16 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
               Cancelar
             </button>
             <button
-              onClick={handleAddToCart}
-              disabled={!canAddToCart()}
-              className="flex-1 px-4 py-3 bg-pink-500 text-white rounded-lg font-bold shadow-lg hover:bg-pink-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-            >
-              <FaShoppingCart size={16} />
-              <span>Adicionar</span>
-            </button>
+  onClick={handleAddToCart}
+  disabled={!canAddToCart}              
+  className={`flex-1 px-4 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold
+    ${canAddToCart
+      ? 'bg-pink-500 text-white hover:bg-pink-600'
+      : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+>
+  <FaShoppingCart size={16} />
+  Adicionar ao carrinho
+</button>
           </div>
         </div>
       </div>
