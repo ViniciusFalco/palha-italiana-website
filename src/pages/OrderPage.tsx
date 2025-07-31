@@ -3,7 +3,6 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import Checkout from '../components/Checkout';
 import ProductSelector from '../components/ProductSelector';
-import OptimizedImage from '../components/OptimizedImage';
 import { FaShoppingCart, FaPlus } from 'react-icons/fa';
 import type { CartItem, FormData, ProductOption } from '../types';
 
@@ -379,4 +378,4 @@ ${formData.coupon ? `🎫 *Cupom aplicado:* ${formData.coupon}` : ''}
   );
 };
 
-export default OrderPage; 
+export default OrderPage;

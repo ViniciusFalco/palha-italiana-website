@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import type { CheckoutProps, FormData, CartItem } from '../types';
-import MapAddressSelector from './MapAddressSelector';
 
 const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem, clearCart }: CheckoutProps) => {
   const [formData, setFormData] = useState<FormData>({
@@ -13,8 +12,6 @@ const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem,
   });
   const [discount, setDiscount] = useState(0);
   const [discountApplied, setDiscountApplied] = useState(false);
-  const [selectedAddress, setSelectedAddress] = useState<string>('');
-  const [showMap, setShowMap] = useState(false);
 
   const subtotal = cartItems.reduce((total: number, item: CartItem) => total + (item.price * item.quantity), 0);
   const shipping = 5.00;
@@ -44,14 +41,6 @@ const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem,
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onCompleteOrder(formData, total);
-  };
-
-  const handleAddressSelect = (address: string) => {
-    setSelectedAddress(address);
-    setFormData(prev => ({
-      ...prev,
-      address
-    }));
   };
 
   if (!isOpen) return null;
