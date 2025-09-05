@@ -31,21 +31,30 @@ const Catering = () => {
             </div>
             
             <div className="grid md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+              <div 
+                className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group cursor-pointer hover:border-primary transition-all duration-300"
+                onClick={goToOrderPage}
+              >
                 <img src="/images/tortas-rustica.jpg" alt="Tortas" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
                 <div className="relative z-10">
                   <h4 className="font-bebas text-xl text-white mb-2">TORTAS</h4>
                   <p className="font-serif text-gray-300 text-sm">Rústicas e personalizadas</p>
                 </div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+              <div 
+                className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group cursor-pointer hover:border-primary transition-all duration-300"
+                onClick={goToOrderPage}
+              >
                 <img src="/images/embalagem-jutaefita.jpg" alt="Embalagens" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
                 <div className="relative z-10">
                   <h4 className="font-bebas text-xl text-white mb-2">EMBALAGENS</h4>
                   <p className="font-serif text-gray-300 text-sm">Caixas decorativas especiais</p>
                 </div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group">
+              <div 
+                className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden group cursor-pointer hover:border-primary transition-all duration-300"
+                onClick={goToOrderPage}
+              >
                 <img src="/images/docesdefestas-forminha.jpg" alt="Festas" className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-300" />
                 <div className="relative z-10">
                   <h4 className="font-bebas text-xl text-white mb-2">FESTAS</h4>

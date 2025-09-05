@@ -227,12 +227,22 @@ const Checkout = ({ isOpen, onClose, cartItems, onCompleteOrder, removeCartItem,
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-pink-600 transition-colors"
-            >
-              Concluir Pedido
-            </button>
+            <div className="flex flex-col space-y-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full bg-gray-700 text-white py-3 rounded-lg font-bold hover:bg-gray-600 transition-colors"
+              >
+                Adicionar mais itens ao carrinho
+              </button>
+              
+              <button
+                type="submit"
+                className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-pink-600 transition-colors"
+              >
+                Concluir Pedido
+              </button>
+            </div>
           </form>
         </div>
       </div>

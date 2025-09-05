@@ -22,6 +22,11 @@ const OrderPage = () => {
     }
   }, []);
 
+  // Scroll to top when component mounts
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const updateItemQuantity = (index: number, newQuantity: number) => {
     setCartItems(prevItems => {
       const newItems = [...prevItems];
@@ -33,72 +38,93 @@ const OrderPage = () => {
   const productOptions: ProductOption[] = [
     // EMBALAGENS
     {
-      name: 'Embalagem com Fita',
+      name: 'Embalagem com Fita 5x5',
       description: 'Embalagem com fita - Tamanho 5x5',
-      basePrice: 3.50,
+      basePrice: 4.50,
       image: '/images/embalagem-fita.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      requiresRibbonWidth: true,
+      requiresRibbonColor: true,
+      minQuantity: 20
     },
     {
-      name: 'Embalagem Tipo Bem Casado/Bem Vivido',
-      description: 'Embalagem tipo bem casado/bem vivido - Tamanho 5x5',
-      basePrice: 4.50,
-      image: '/images/embalagem-jutaefita.jpg',
+      name: 'Palha Bem casado',
+      description: 'Palha bem casado - Tamanho 5x5',
+      basePrice: 5.50,
+      image: '/images/bem_casado.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      minQuantity: 40
     },
     {
       name: 'Embalagem com Adesivos',
       description: 'Embalagem com adesivos - Tamanho 5x5',
-      basePrice: 3.50,
+      basePrice: 4.50,
       image: '/images/embalagem-adesivos.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      minQuantity: 20
     },
     {
       name: 'Caixa Milk com Tema',
       description: 'Caixa milk com tema à escolha',
-      basePrice: 14.90,
+      basePrice: 16.90,
       image: '/images/embalagem-milkcomtema.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      requiresRibbonWidth: true,
+      requiresRibbonColor: true
     },
     {
       name: 'Palhas Juta e Fita',
       description: 'Palhas juta e fita - Tamanho 5x5',
-      basePrice: 4.50,
+      basePrice: 5.50,
       image: '/images/embalagem-jutaefita.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      requiresRibbonWidth: true,
+      requiresRibbonColor: true
     },
     {
-      name: 'Palhas de Colher Pote 100ml',
-      description: 'Palhas de colher pote 100ml personalizada',
-      basePrice: 14.90,
+      name: 'Palhas picadinhas (Kg)',
+      description: 'Palhas picadinhas por Kg - 1Kg R$ 69,90 | 1/2 Kg R$ 40,00',
+      basePrice: 69.90,
       image: '/images/embalagem-colherpote100ml.jpg',
       category: 'packaging',
-      requiresFlavor: true
+      requiresFlavor: true,
+      requiresSize: true,
+      sizeOptions: [
+        { size: '1/2 Kg', price: 40.00 },
+        { size: '1 Kg', price: 69.90 },
+        { size: '2 Kg', price: 139.80 },
+        { size: '3 Kg', price: 209.70 },
+        { size: '4 Kg', price: 279.60 },
+        { size: '5 Kg', price: 349.50 }
+      ]
     },
     
     // DOCES DE FESTAS
     {
       name: 'Docinho de Palha Italiana - Na Forminha',
-      description: 'Docinho de palha italiana na forminha - Preço por cento',
-      basePrice: 120.00,
+      description: 'Docinho de palha italiana na forminha - R$ 1,50 cada',
+      basePrice: 1.50,
       image: '/images/docesdefestas-forminha.jpg',
       category: 'party',
       requiresFlavor: true,
-      minQuantity: 50
+      requiresFormColor: true,
+      minQuantity: 100
     },
     {
       name: 'Docinho de Palha Italiana - Embaladas com Fita',
-      description: 'Docinho de palha italiana embaladas com fita - Preço por cento',
-      basePrice: 160.00,
+      description: 'Docinho de palha italiana embaladas com fita - R$ 1,50 cada',
+      basePrice: 1.50,
       image: '/images/docesdefestas-fita.jpg',
       category: 'party',
       requiresFlavor: true,
-      minQuantity: 50
+      requiresRibbonWidth: true,
+      requiresRibbonColor: true,
+      minQuantity: 100
     },
     
     // TORTAS
@@ -137,7 +163,10 @@ const OrderPage = () => {
         cartItem.name === item.name && 
         cartItem.flavor === item.flavor && 
         cartItem.coverage === item.coverage &&
-        cartItem.size === item.size
+        cartItem.size === item.size &&
+        cartItem.ribbonWidth === item.ribbonWidth &&
+        cartItem.ribbonColor === item.ribbonColor &&
+        cartItem.formColor === item.formColor
       );
       
       if (existingItem) {
@@ -158,6 +187,9 @@ const OrderPage = () => {
       if (item.flavor) itemText += ` - Sabor: ${item.flavor}`;
       if (item.coverage) itemText += ` - Cobertura: ${item.coverage}`;
       if (item.size) itemText += ` - Tamanho: ${item.size}`;
+      if (item.ribbonWidth) itemText += ` - Largura da fita: ${item.ribbonWidth}`;
+      if (item.ribbonColor) itemText += ` - Cor da fita: ${item.ribbonColor}`;
+      if (item.formColor) itemText += ` - Cor da forminha: ${item.formColor}`;
       itemText += ` - R$ ${(item.price * item.quantity).toFixed(2)}`;
       return itemText;
     }).join('\n');
@@ -198,7 +230,7 @@ const OrderPage = () => {
         </div>
       )}
 
-      <main className="pt-20 pb-24">
+      <main className={`pt-20 ${cartItems.length > 0 ? 'pb-32' : 'pb-24'}`}>
         <div className="container mx-auto px-4">
           <h1 className="font-bebas text-5xl md:text-6xl text-primary text-center mb-12 mt-4 md:mt-8">
             FAÇA SEU PEDIDO
@@ -266,7 +298,7 @@ const OrderPage = () => {
                       <p className="text-gray-600 text-sm mb-4">{product.description}</p>
                       <div className="flex items-center justify-between">
                         <span className="text-primary font-bold text-lg">
-                          {formatPrice(product.basePrice)} o cento
+                          R$ {product.basePrice.toFixed(2).replace('.', ',')} cada
                         </span>
                         <button
                           onClick={() => setSelectedProduct(product)}
@@ -325,7 +357,7 @@ const OrderPage = () => {
 
       {/* Cart Summary */}
       {cartItems.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 p-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 p-4 z-40">
           <div className="container mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <FaShoppingCart className="text-primary" size={24} />

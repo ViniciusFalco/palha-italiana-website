@@ -8,6 +8,9 @@ export interface CartItem {
   coverage?: string;
   packaging?: string;
   size?: string;
+  ribbonWidth?: string;
+  ribbonColor?: string;
+  formColor?: string;
   address?: string;
 }
 
@@ -56,6 +59,9 @@ export interface ProductOption {
   requiresFlavor?: boolean;
   requiresCoverage?: boolean;
   requiresSize?: boolean;
+  requiresRibbonWidth?: boolean;
+  requiresRibbonColor?: boolean;
+  requiresFormColor?: boolean;
   sizeOptions?: { size: string; price: number }[];
   minQuantity?: number;
 }
@@ -66,6 +72,16 @@ export interface FlavorOption {
 }
 
 export interface CoverageOption {
+  name: string;
+  value: string;
+}
+
+export interface RibbonWidthOption {
+  name: string;
+  value: string;
+}
+
+export interface ColorOption {
   name: string;
   value: string;
 } 

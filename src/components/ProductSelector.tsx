@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaShoppingCart, FaPlus, FaMinus } from 'react-icons/fa';
-import type { ProductOption, CartItem, FlavorOption, CoverageOption } from '../types';
+import type { ProductOption, CartItem, FlavorOption, CoverageOption, RibbonWidthOption, ColorOption } from '../types';
 
 interface ProductSelectorProps {
   product: ProductOption;
@@ -18,19 +18,46 @@ const FLAVORS: FlavorOption[] = [
   { name: 'Limão Siciliano', value: 'LIMAO_SICILIANO' },
 ];
 
-const COVERAGES: CoverageOption[] = [
-  { name: 'Chocolate', value: 'CHOCOLATE' },
-  { name: 'Morango', value: 'MORANGO' },
-  { name: 'Limão', value: 'LIMAO' },
-  { name: 'Caramelo', value: 'CARAMELO' },
-  { name: 'Doce de Leite', value: 'DOCE_DE_LEITE' },
+const RIBBON_WIDTHS: RibbonWidthOption[] = [
+  { name: '3mm', value: '3MM' },
+  { name: '7mm', value: '7MM' },
+  { name: '10mm', value: '10MM' },
+];
+
+const RIBBON_COLORS: ColorOption[] = [
+  { name: 'Rosa', value: 'ROSA' },
+  { name: 'Azul', value: 'AZUL' },
+  { name: 'Verde', value: 'VERDE' },
+  { name: 'Amarelo', value: 'AMARELO' },
+  { name: 'Roxo', value: 'ROXO' },
+  { name: 'Vermelho', value: 'VERMELHO' },
+  { name: 'Preto', value: 'PRETO' },
+  { name: 'Branco', value: 'BRANCO' },
+  { name: 'Dourado', value: 'DOURADO' },
+  { name: 'Prata', value: 'PRATA' },
+];
+
+const FORM_COLORS: ColorOption[] = [
+  { name: 'Rosa', value: 'ROSA' },
+  { name: 'Azul', value: 'AZUL' },
+  { name: 'Verde', value: 'VERDE' },
+  { name: 'Amarelo', value: 'AMARELO' },
+  { name: 'Roxo', value: 'ROXO' },
+  { name: 'Vermelho', value: 'VERMELHO' },
+  { name: 'Preto', value: 'PRETO' },
+  { name: 'Branco', value: 'BRANCO' },
+  { name: 'Dourado', value: 'DOURADO' },
+  { name: 'Prata', value: 'PRATA' },
 ];
 
 const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps) => {
   const [selectedFlavor, setSelectedFlavor] = useState('');
   const [selectedCoverage, setSelectedCoverage] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [selectedRibbonWidth, setSelectedRibbonWidth] = useState('');
+  const [selectedRibbonColor, setSelectedRibbonColor] = useState('');
+  const [selectedFormColor, setSelectedFormColor] = useState('');
+  const [quantity, setQuantity] = useState(product.minQuantity || 1);
   const [subtotal, setSubtotal] = useState(0);
 
   /* ---------- cálculo de subtotal ---------- */
@@ -42,12 +69,7 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
       if (sizeOption) currentPrice = sizeOption.price;
     }
 
-    if (product.category === 'party') {
-      const proportion = quantity / 100; // preço por cento
-      setSubtotal(currentPrice * proportion);
-    } else {
-      setSubtotal(currentPrice * quantity);
-    }
+    setSubtotal(currentPrice * quantity);
   }, [selectedSize, quantity, product]);
 
   /* ---------- adicionar ao carrinho ---------- */
@@ -64,10 +86,6 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
       if (sizeOption) finalPrice = sizeOption.price;
     }
 
-    if (product.category === 'party') {
-      finalPrice = product.basePrice / 100; // preço por unidade
-    }
-
     const cartItem: CartItem = {
       name: product.name,
       description: product.description,
@@ -76,6 +94,9 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
       flavor: selectedFlavor,
       coverage: selectedCoverage,
       size: selectedSize,
+      ribbonWidth: selectedRibbonWidth,
+      ribbonColor: selectedRibbonColor,
+      formColor: selectedFormColor,
       quantity,
     };
 
@@ -87,6 +108,9 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
     (!product.requiresFlavor || selectedFlavor) &&
     (!product.requiresCoverage || selectedCoverage) &&
     (!product.requiresSize || selectedSize) &&
+    (!product.requiresRibbonWidth || selectedRibbonWidth) &&
+    (!product.requiresRibbonColor || selectedRibbonColor) &&
+    (!product.requiresFormColor || selectedFormColor) &&
     (!product.minQuantity || quantity >= product.minQuantity);
 
   const formatPrice = (price: number) => `R$ ${price.toFixed(2).replace('.', ',')}`;
@@ -198,51 +222,147 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
             </div>
           )}
 
+          {/* Largura da Fita */}
+          {product.requiresRibbonWidth && (
+            <div className="mb-5">
+              <label className="block text-sm font-bold text-pink-600 mb-2">
+                Largura da fita <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedRibbonWidth}
+                  onChange={(e) => setSelectedRibbonWidth(e.target.value)}
+                  style={{ backgroundColor: 'white', color: '#374151' }}
+                  className={`w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none ${product.requiresRibbonWidth && !selectedRibbonWidth ? 'border-red-300' : 'border-gray-300'}`}
+                >
+                  <option value="" style={{ color: '#6B7280' }}>Selecione a largura da fita</option>
+                  {RIBBON_WIDTHS.map((width) => (
+                    <option key={width.value} value={width.value} style={{ color: '#111827' }}>
+                      {width.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M7 7l3 3 3-3"/></svg>
+                </span>
+              </div>
+              {product.requiresRibbonWidth && !selectedRibbonWidth && (
+                <p className="text-red-500 text-xs mt-1">Largura da fita é obrigatória</p>
+              )}
+            </div>
+          )}
+
+          {/* Cor da Fita */}
+          {product.requiresRibbonColor && (
+            <div className="mb-5">
+              <label className="block text-sm font-bold text-pink-600 mb-2">
+                Cor da fita <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedRibbonColor}
+                  onChange={(e) => setSelectedRibbonColor(e.target.value)}
+                  style={{ backgroundColor: 'white', color: '#374151' }}
+                  className={`w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none ${product.requiresRibbonColor && !selectedRibbonColor ? 'border-red-300' : 'border-gray-300'}`}
+                >
+                  <option value="" style={{ color: '#6B7280' }}>Selecione a cor da fita</option>
+                  {RIBBON_COLORS.map((color) => (
+                    <option key={color.value} value={color.value} style={{ color: '#111827' }}>
+                      {color.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M7 7l3 3 3-3"/></svg>
+                </span>
+              </div>
+              {product.requiresRibbonColor && !selectedRibbonColor && (
+                <p className="text-red-500 text-xs mt-1">Cor da fita é obrigatória</p>
+              )}
+            </div>
+          )}
+
+          {/* Cor da Forminha */}
+          {product.requiresFormColor && (
+            <div className="mb-5">
+              <label className="block text-sm font-bold text-pink-600 mb-2">
+                Cor da forminha <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedFormColor}
+                  onChange={(e) => setSelectedFormColor(e.target.value)}
+                  style={{ backgroundColor: 'white', color: '#374151' }}
+                  className={`w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none ${product.requiresFormColor && !selectedFormColor ? 'border-red-300' : 'border-gray-300'}`}
+                >
+                  <option value="" style={{ color: '#6B7280' }}>Selecione a cor da forminha</option>
+                  {FORM_COLORS.map((color) => (
+                    <option key={color.value} value={color.value} style={{ color: '#111827' }}>
+                      {color.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 pointer-events-none">
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M7 7l3 3 3-3"/></svg>
+                </span>
+              </div>
+              {product.requiresFormColor && !selectedFormColor && (
+                <p className="text-red-500 text-xs mt-1">Cor da forminha é obrigatória</p>
+              )}
+            </div>
+          )}
+
           {/* Quantidade */}
           <div className="mb-6">
             <label className="block text-sm font-bold text-pink-600 mb-2">
               Quantidade <span className="text-red-500">*</span>
             </label>
-            {product.category === 'party' && (
+            
+            {/* Botões rápidos para produtos com quantidade mínima */}
+            {product.minQuantity && product.minQuantity > 1 && (
               <div className="grid grid-cols-3 gap-2 mb-3">
                 <button
                   type="button"
-                  onClick={() => setQuantity(50)}
-                  className={`py-2 px-4 rounded-lg transition-colors ${
-                    quantity === 50 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  onClick={() => setQuantity(product.minQuantity || 1)}
+                  className={`py-2 px-3 rounded-lg transition-colors text-sm ${
+                    quantity === (product.minQuantity || 1) 
+                      ? 'bg-pink-600 text-white' 
+                      : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
                   }`}
                 >
-                  50 und
+                  {product.minQuantity} und
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQuantity(100)}
-                  className={`py-2 px-4 rounded-lg transition-colors ${
-                    quantity === 100 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  onClick={() => setQuantity(product.minQuantity === 100 ? 150 : 50)}
+                  className={`py-2 px-3 rounded-lg transition-colors text-sm ${
+                    quantity === (product.minQuantity === 100 ? 150 : 50)
+                      ? 'bg-pink-600 text-white' 
+                      : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
                   }`}
                 >
-                  100 und
+                  {product.minQuantity === 100 ? '150 und' : '50 und'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQuantity(200)}
-                  className={`py-2 px-4 rounded-lg transition-colors ${
-                    quantity === 200 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
+                  onClick={() => setQuantity(product.minQuantity === 100 ? 200 : 100)}
+                  className={`py-2 px-3 rounded-lg transition-colors text-sm ${
+                    quantity === (product.minQuantity === 100 ? 200 : 100)
+                      ? 'bg-pink-600 text-white' 
+                      : 'bg-pink-100 text-pink-600 hover:bg-pink-200'
                   }`}
                 >
-                  200 und
+                  {product.minQuantity === 100 ? '200 und' : '100 und'}
                 </button>
               </div>
             )}
+            
             <div className="flex items-center justify-center space-x-4">
               <button
                 type="button"
                 onClick={() => {
-                  if (product.category === 'party') {
-                    setQuantity(prev => prev > 50 ? prev - 50 : 50);
-                  } else {
-                    setQuantity(prev => prev > 1 ? prev - 1 : 1);
-                  }
+                  const minQty = product.minQuantity || 1;
+                  setQuantity(prev => prev > minQty ? prev - 1 : minQty);
                 }}
                 className="w-12 h-12 flex items-center justify-center text-pink-600 hover:text-pink-700 bg-pink-100 hover:bg-pink-200 rounded-lg transition-colors"
               >
@@ -255,31 +375,20 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
                   onChange={(e) => {
                     const value = parseInt(e.target.value);
                     if (!isNaN(value)) {
-                      if (product.category === 'party') {
-                        if (value >= 50) {
-                          setQuantity(value);
-                        }
-                      } else {
-                        if (value >= 1) {
-                          setQuantity(value);
-                        }
+                      const minQty = product.minQuantity || 1;
+                      if (value >= minQty) {
+                        setQuantity(value);
                       }
                     }
                   }}
-                  min={product.category === 'party' ? "50" : "1"}
+                  min={product.minQuantity || 1}
                   style={{ backgroundColor: 'white', color: '#374151' }}
                   className="w-full p-3 text-center border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-pink-500 focus:border-transparent text-lg font-medium"
                 />
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (product.category === 'party') {
-                    setQuantity(prev => prev + 50);
-                  } else {
-                    setQuantity(prev => prev + 1);
-                  }
-                }}
+                onClick={() => setQuantity(prev => prev + 1)}
                 className="w-12 h-12 flex items-center justify-center text-pink-600 hover:text-pink-700 bg-pink-100 hover:bg-pink-200 rounded-lg transition-colors"
               >
                 <FaPlus size={16} />
@@ -296,11 +405,6 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
               <span className="font-bold text-pink-600">Subtotal:</span>
               <span className="font-bold text-lg text-gray-900">{formatPrice(subtotal)}</span>
             </div>
-            {product.category === 'party' && (
-              <p className="text-xs text-gray-500 mt-1">
-                Preço por cento: <span className="font-bold text-pink-600">{formatPrice(product.basePrice)}</span>
-              </p>
-            )}
           </div>
 
           <div className="flex space-x-3 mt-2">
