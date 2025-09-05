@@ -24,6 +24,19 @@ const RIBBON_WIDTHS: RibbonWidthOption[] = [
   { name: '10mm', value: '10MM' },
 ];
 
+const COVERAGES: CoverageOption[] = [
+  { name: 'Biscoito e Kit Kat', value: 'BISCOITO_KIT_KAT' },
+  { name: 'Biscoito Oreo', value: 'BISCOITO_OREO' },
+  { name: 'Leite ninho + Oreo', value: 'LEITE_NINHO_OREO' },
+  { name: 'Coco e 1 prestígio', value: 'COCO_PRESTIGIO' },
+  { name: 'Amendoim e 2 paçocas', value: 'AMENDOIM_PACOCAS' },
+  { name: 'Raspas de limão siciliano', value: 'RASPAS_LIMAO_SICILIANO' },
+  { name: 'Goiabada', value: 'GOIABADA' },
+  { name: 'Chocolate em pó 50%', value: 'CHOCOLATE_PO_50' },
+  { name: 'Canela e açúcar', value: 'CANELA_ACUCAR' },
+  { name: 'Cappuccino de avelã', value: 'CAPPUCCINO_AVELA' },
+];
+
 const RIBBON_COLORS: ColorOption[] = [
   { name: 'Rosa', value: 'ROSA' },
   { name: 'Azul', value: 'AZUL' },
