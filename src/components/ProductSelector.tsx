@@ -386,13 +386,8 @@ const ProductSelector = ({ product, onAddToCart, onClose }: ProductSelectorProps
                   type="number"
                   value={quantity}
                   onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (!isNaN(value)) {
-                      const minQty = product.minQuantity || 1;
-                      if (value >= minQty) {
-                        setQuantity(value);
-                      }
-                    }
+                    const value = parseInt(e.target.value) || 0;
+                    setQuantity(value);
                   }}
                   min={product.minQuantity || 1}
                   style={{ backgroundColor: 'white', color: '#374151' }}
