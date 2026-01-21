@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import 'mapbox-gl/dist/mapbox-gl.css';
+
 @font-face {
   font-family: 'Sour Gummy';
   src: url('./assets/fonts/SourGummy.ttf') format('truetype');
@@ -18,7 +20,7 @@ body {
   background-color: #000000;
   color: white;
   margin: 0;
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   height: 100%;
   overflow: auto;
   overscroll-behavior: none;
@@ -28,7 +30,14 @@ body {
   box-sizing: border-box;
 }
 
-/* Otimizações de performance */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* OtimizaÇõÇæes de performance */
 .optimize-gpu {
   transform: translateZ(0);
   backface-visibility: hidden;
@@ -50,14 +59,14 @@ img {
   transition: opacity 0.3s ease-out;
 }
 
-/* Container com virtualização */
+/* Container com virtualizaÇõÇœo */
 .virtualized-container {
   contain: content;
   content-visibility: auto;
   contain-intrinsic-size: 0 500px;
 }
 
-/* Otimizações de performance */
+/* OtimizaÇõÇæes de performance */
 img {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
@@ -73,7 +82,7 @@ img[loading="lazy"].loaded {
   opacity: 1;
 }
 
-/* Otimizações de performance para imagens */
+/* OtimizaÇõÇæes de performance para imagens */
 @media (prefers-reduced-motion: no-preference) {
   .img-fade-in {
     opacity: 0;
@@ -85,7 +94,7 @@ img[loading="lazy"].loaded {
   }
 }
 
-/* Animações otimizadas */
+/* AnimaÇõÇæes otimizadas */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -112,5 +121,3 @@ img[loading="lazy"].loaded {
     opacity: 0.5;
   }
 }
-
-@import 'mapbox-gl/dist/mapbox-gl.css';

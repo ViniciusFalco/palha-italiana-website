@@ -6,14 +6,9 @@ const Footer = () => {
     <footer id="contato" className="bg-background py-8">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row items-center justify-between">
-          {/* Brand Name */}
-          <div className="text-center md:text-left mb-4 md:mb-0">
-            <div className="text-white text-xl font-bold mb-1">
-              Sweet Child
-            </div>
-            <div className="text-gray-300 text-sm font-light">
-              Doces artesanais
-            </div>
+          {/* Brand Logo */}
+          <div className="text-center md:text-left mb-4 md:mb-0 flex items-center justify-center md:justify-start">
+            <img src="/logo.png" alt="Palha Italiana Sweet Child" className="h-12 w-auto" />
           </div>
 
           {/* Social Media Icons */}

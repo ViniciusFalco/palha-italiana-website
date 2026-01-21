@@ -25,7 +25,7 @@ const Header = () => {
       <header className="bg-background fixed top-0 w-full z-50 flex items-center justify-between px-4 py-3">
         {/* Logo */}
         <div className="cursor-pointer flex items-center" onClick={goToHome}>
-          <img src="/logo.png" alt="Palha Italiana" className="h-12 w-auto" />
+          <img src="/logo.png" alt="Palha Italiana" className="h-10 w-auto md:h-11" />
         </div>
 
         {/* Navegação desktop */}

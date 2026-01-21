@@ -1,9 +1,14 @@
+import type { ProductDetailSelection } from './productDetail';
+
 export interface CartItem {
   name: string;
   description: string;
   price: number;
   image: string;
   quantity: number;
+  product_id?: string;
+  unit_price_cents?: number;
+  details?: ProductDetailSelection[];
   flavor?: string;
   coverage?: string;
   packaging?: string;
@@ -12,24 +17,29 @@ export interface CartItem {
   ribbonColor?: string;
   formColor?: string;
   address?: string;
+  notes?: string;
 }
 
 export interface FormData {
   name: string;
   phone: string;
-  address: string;
+  street: string;
+  houseNumber: string;
   addressComplement?: string;
-  coupon: string;
+  noComplement: boolean;
+  paymentMethod: 'pix' | 'credit' | 'debit';
+  address?: string;
 }
 
 export interface CheckoutProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
-  onCompleteOrder: (formData: FormData, total: number) => void;
+  onCompleteOrder: (formData: FormData, total: number) => Promise<void>;
   removeCartItem?: (index: number) => void;
   clearCart?: () => void;
   updateItemQuantity?: (index: number, quantity: number) => void;
+  updateItemQuantityWithPricing?: (id: string, quantity: number) => void;
 }
 
 export interface MenuItemProps {
@@ -51,19 +61,23 @@ export interface SlideProps {
 }
 
 export interface ProductOption {
+  id?: string;
   name: string;
   description: string;
   basePrice: number;
   image: string;
   category: 'packaging' | 'party' | 'cake';
+  sku?: string;
   requiresFlavor?: boolean;
   requiresCoverage?: boolean;
   requiresSize?: boolean;
   requiresRibbonWidth?: boolean;
   requiresRibbonColor?: boolean;
   requiresFormColor?: boolean;
-  sizeOptions?: { size: string; price: number }[];
+  sizeOptions?: { size: string; price: number; id?: string }[];
   minQuantity?: number;
+  quickQuantities?: number[];
+  priceTiers?: { minQuantity: number; price: number }[];
 }
 
 export interface FlavorOption {

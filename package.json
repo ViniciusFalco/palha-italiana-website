@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@mapbox/mapbox-gl-geocoder": "^5.1.0",
+    "@supabase/supabase-js": "^2.58.0",
     "@types/node": "^24.1.0",
     "@types/react-map-gl": "^6.1.7",
+    "jspdf": "^4.0.0",
     "mapbox-gl": "^3.14.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
