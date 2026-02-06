@@ -40,6 +40,7 @@ type ProductDetailOption = {
   value: string;
   extra_price_delta_cents: number;
   sort_order: number;
+  extraPriceInput?: string;
   clientId?: string;
 };
 
@@ -70,9 +71,9 @@ const DETAIL_INPUT_TYPES: Array<{ value: ProductDetailField['input_type']; label
 ];
 
 const STEP_ITEMS = [
-  { key: 'basic', label: 'Básico', helper: 'Nome, imagem e preço' },
-  { key: 'pricing', label: 'Preço e quantidade', helper: 'Descontos por volume' },
-  { key: 'custom', label: 'Personalizações', helper: 'Perguntas do cliente' },
+  { key: 'basic', label: 'Básico', shortLabel: 'Básico', helper: 'Nome e preço' },
+  { key: 'pricing', label: 'Preço e quantidade', shortLabel: 'Preço', helper: 'Faixas' },
+  { key: 'custom', label: 'Personalizações', shortLabel: 'Personal', helper: 'Opções' },
 ];
 
 const IMAGE_BUCKET = import.meta.env.VITE_IMAGE_BUCKET?.trim() || 'product-images';
@@ -164,6 +165,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
   const [currentStep, setCurrentStep] = useState(0);
   const [showDescription, setShowDescription] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
 
   const [productTitle, setproductTitle] = useState('Editar produto');
   const [sku, setSku] = useState('');
@@ -195,6 +197,10 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
   useEffect(() => {
     authRetryRef.current = withAuthRetry;
   }, [withAuthRetry]);
+
+  useEffect(() => {
+    setIsImageZoomed(false);
+  }, [imageUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -319,6 +325,9 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
               extra_price_delta_cents: Number.isFinite(opt.extra_price_delta_cents)
                 ? opt.extra_price_delta_cents
                 : 0,
+              extraPriceInput: centsToInput(
+                Number.isFinite(opt.extra_price_delta_cents) ? opt.extra_price_delta_cents : 0
+              ),
             }));
           return {
             ...field,
@@ -577,6 +586,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                   label: '',
                   value: '',
                   extra_price_delta_cents: 0,
+                  extraPriceInput: centsToInput(0),
                   sort_order: (field.options.at(-1)?.sort_order ?? 0) + 1,
                 },
               ],
@@ -616,6 +626,54 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                       }
                       return nextOption;
                     })()
+                  : opt
+              ),
+            }
+          : field
+      )
+    );
+  };
+
+  const handleOptionPriceInputChange = (
+    fieldClientId: string,
+    optionClientId: string,
+    value: string
+  ) => {
+    markDirty();
+    const parsed = parseCurrencyInput(value || '0');
+    const nextCents = Number.isNaN(parsed) ? 0 : Math.round(parsed * 100);
+    setFields((prev) =>
+      prev.map((field) =>
+        field.clientId === fieldClientId
+          ? {
+              ...field,
+              options: field.options.map((opt) =>
+                opt.clientId === optionClientId
+                  ? {
+                      ...opt,
+                      extraPriceInput: value,
+                      extra_price_delta_cents: nextCents,
+                    }
+                  : opt
+              ),
+            }
+          : field
+      )
+    );
+  };
+
+  const handleOptionPriceInputBlur = (fieldClientId: string, optionClientId: string) => {
+    setFields((prev) =>
+      prev.map((field) =>
+        field.clientId === fieldClientId
+          ? {
+              ...field,
+              options: field.options.map((opt) =>
+                opt.clientId === optionClientId
+                  ? {
+                      ...opt,
+                      extraPriceInput: centsToInput(opt.extra_price_delta_cents ?? 0),
+                    }
                   : opt
               ),
             }
@@ -1008,7 +1066,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
 
       if (resolvedOptions.length > 0) {
         const { error: upsertOptionsError } = await runQuery(
-          () => supabase.from('product_detail_options').upsert(resolvedOptions, { onConflict: 'id' }),
+          () => supabase.from('product_detail_options').upsert(resolvedOptions, { onConflict: 'field_id,value' }),
           'upsert-field-options'
         );
         if (upsertOptionsError) {
@@ -1075,89 +1133,104 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
       : fields.length === 1
         ? '1 pergunta configurada'
         : `${fields.length} perguntas configuradas`;
+  const displayTitle = isCreateMode ? 'Novo produto' : name.trim() || productTitle || 'Produto';
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal">
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Edição de produto</p>
-            <h2 className="admin-modal-title">{productTitle || 'Editar produto'}</h2>
-            <p className="admin-modal-helper">
-              Preencha o básico e configure preços e personalizações.
-            </p>
+    <div className="admin-modal-backdrop admin-modal-backdrop-full admin-modal-backdrop-dark">
+      <div className="admin-modal admin-modal-product admin-modal-dark">
+        <header className="admin-modal-header-fixed">
+          <div className="admin-modal-header-main">
+            <div className="admin-modal-title-group">
+              <h2 className="admin-modal-title-strong">{displayTitle}</h2>
+            </div>
+            <div className="admin-modal-header-actions">
+              <span className={`admin-save-status ${saveStatusClass} admin-save-status-compact`}>
+                {saveStatus}
+              </span>
+              <button type="button" className="admin-button-ghost" onClick={onClose}>
+                Fechar
+              </button>
+            </div>
           </div>
-          <div className="admin-modal-header-actions">
-            <span className={`admin-save-status ${saveStatusClass}`}>{saveStatus}</span>
-            <button type="button" className="admin-button-ghost" onClick={onClose}>
-              Fechar
-            </button>
-          </div>
-        </div>
+          <nav className="admin-stepper admin-stepper-compact" aria-label="Etapas do produto">
+            {STEP_ITEMS.map((step, index) => {
+              const isActive = currentStep === index;
+              return (
+                <button
+                  key={step.key}
+                  type="button"
+                  className={`admin-step admin-step-compact${isActive ? ' is-active' : ''}`}
+                  onClick={() => setCurrentStep(index)}
+                  aria-current={isActive ? 'step' : undefined}
+                  aria-label={`${index + 1} ${step.label}`}
+                >
+                  <span className="admin-step-index">{index + 1}</span>
+                  <span className="admin-step-text">
+                    <span className="admin-step-label admin-step-label-full">{step.label}</span>
+                    <span className="admin-step-label admin-step-label-short">{step.shortLabel}</span>
+                    {step.helper ? <span className="admin-step-helper">{step.helper}</span> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </header>
 
         {loading ? (
-          <div className="admin-modal-loading">Carregando dados do produto...</div>
+          <div className="admin-modal-body admin-modal-body-scroll">
+            <div className="admin-modal-loading">Carregando dados do produto...</div>
+          </div>
         ) : loadError ? (
-          <div className="admin-alert">
-            <p>{loadError}</p>
-            <button type="button" className="admin-button" onClick={onClose}>
-              Voltar
-            </button>
+          <div className="admin-modal-body admin-modal-body-scroll">
+            <div className="admin-alert admin-alert-dark">
+              <p>{loadError}</p>
+              <button type="button" className="admin-button" onClick={onClose}>
+                Voltar
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            <div className="admin-modal-body">
-              {errorMessage && <div className="admin-inline-error">{errorMessage}</div>}
-
-              <nav className="admin-stepper" aria-label="Etapas de edição">
-                {STEP_ITEMS.map((step, index) => {
-                  const isActive = currentStep === index;
-                  return (
-                    <button
-                      key={step.key}
-                      type="button"
-                      className={`admin-step${isActive ? ' is-active' : ''}`}
-                      onClick={() => setCurrentStep(index)}
-                      aria-current={isActive ? 'step' : undefined}
-                    >
-                      <span className="admin-step-index">{index + 1}</span>
-                      <span className="admin-step-text">
-                        <span className="admin-step-label">{step.label}</span>
-                        <span className="admin-step-helper">{step.helper}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </nav>
+            <div className="admin-modal-body admin-modal-body-scroll">
+              {errorMessage && (
+                <div className="admin-inline-error admin-inline-error-dark" role="alert">
+                  {errorMessage}
+                </div>
+              )}
 
               {currentStep === 0 && (
-                <section className="admin-step-panel">
-                  <div className="admin-step-header">
-                    <div>
-                      <p className="admin-section-kicker">Passo 1</p>
-                      <h3 className="admin-section-title">Básico do produto</h3>
-                      <p className="admin-section-helper">
-                        O essencial que aparece para o cliente e no catálogo.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="admin-basic-grid">
-                    <div className="admin-image-card">
-                      <div className="admin-image-wrapper">
+                <section className="admin-step-panel admin-step-panel-basic">
+                  <div className="admin-step-grid">
+                    <div className="admin-card admin-card-image">
+                      <div className="admin-card-header">
+                        <h3 className="admin-card-title">Imagem</h3>
+                      </div>
+                      <div
+                        className={`admin-image-wrapper${isImageZoomed ? ' is-zoomed' : ''}`}
+                        onClick={() => {
+                          if (imageUrl) {
+                            setIsImageZoomed((prev) => !prev);
+                          }
+                        }}
+                        role={imageUrl ? 'button' : undefined}
+                        tabIndex={imageUrl ? 0 : undefined}
+                        onKeyDown={(event) => {
+                          if (!imageUrl) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setIsImageZoomed((prev) => !prev);
+                          }
+                        }}
+                      >
                         {imageUrl ? (
-                          <img
-                            src={imageUrl}
-                            alt={name || 'Imagem do produto'}
-                            className="admin-image-preview"
-                          />
+                          <img src={imageUrl} alt={name || 'Imagem do produto'} className="admin-image-preview" />
                         ) : (
                           <div className="admin-image-placeholder">
                             <span>Sem imagem</span>
                           </div>
                         )}
                       </div>
-                      <div className="admin-image-actions">
+                      <div className="admin-image-actions admin-image-actions-compact">
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1167,97 +1240,108 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                         />
                         <button
                           type="button"
-                          className="admin-button-outline"
+                          className="admin-button-outline admin-button-block"
                           onClick={handleSelectImage}
                           disabled={imageUploading}
                         >
                           {imageUploading ? 'Enviando...' : 'Trocar imagem'}
                         </button>
-                        <p className="admin-helper-text">Prefira imagens quadradas e nítidas.</p>
                       </div>
                     </div>
 
-                    <div className="admin-basic-fields">
-                      <label className="admin-field">
-                        <span>Nome do produto *</span>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) => {
-                            setName(e.target.value);
-                            markDirty();
-                          }}
-                          className="admin-input"
-                          placeholder="Ex.: Palha italiana tradicional"
-                        />
-                      </label>
-                      <label className="admin-field">
-                        <span>Categoria</span>
-                        <select
-                          value={category}
-                          onChange={(e) => {
-                            setCategory(e.target.value as ProductCategory);
-                            markDirty();
-                          }}
-                          className="admin-select"
-                        >
-                          {CATEGORY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="admin-field">
-                        <span>Preço base (R$)</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={priceInput}
-                          onChange={(e) => {
-                            setPriceInput(e.target.value);
-                            markDirty();
-                          }}
-                          className="admin-input"
-                          placeholder="Ex.: 29,90"
-                        />
-                      </label>
-                      <label className="admin-field">
-                        <span>
-                          Quantidade mínima
-                          <span className="admin-tooltip" title="Se vazio, não exige mínimo.">
-                            ?
-                          </span>
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={minQuantity}
-                          onChange={(e) => {
-                            setMinQuantity(e.target.value);
-                            markDirty();
-                          }}
-                          className="admin-input"
-                          placeholder="Ex.: 10"
-                        />
-                      </label>
-                      <label className="admin-switch">
-                        <input
-                          type="checkbox"
-                          checked={isActive}
-                          onChange={(e) => {
-                            setIsActive(e.target.checked);
-                            markDirty();
-                          }}
-                        />
-                        <span className="admin-switch-track" aria-hidden="true" />
-                        <span>Ativo para vendas</span>
-                      </label>
+                    <div className="admin-card admin-card-fields">
+                      <div className="admin-card-header">
+                        <h3 className="admin-card-title">Essenciais</h3>
+                      </div>
+                      <div className="admin-field-grid admin-field-grid-compact">
+                        <label className="admin-field">
+                          <span>Nome do produto *</span>
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => {
+                              setName(e.target.value);
+                              markDirty();
+                            }}
+                            className="admin-input"
+                            placeholder="Ex.: Palha italiana tradicional"
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Categoria</span>
+                          <select
+                            value={category}
+                            onChange={(e) => {
+                              setCategory(e.target.value as ProductCategory);
+                              markDirty();
+                            }}
+                            className="admin-select"
+                          >
+                            {CATEGORY_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="admin-field">
+                          <span>Preço base (R$)</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={priceInput}
+                            onChange={(e) => {
+                              setPriceInput(e.target.value);
+                              markDirty();
+                            }}
+                            className="admin-input"
+                            placeholder="Ex.: 29,90"
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Quantidade mínima</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={minQuantity}
+                            onChange={(e) => {
+                              setMinQuantity(e.target.value);
+                              markDirty();
+                            }}
+                            className="admin-input"
+                            placeholder="Ex.: 10"
+                          />
+                        </label>
+                        <label className="admin-switch">
+                          <input
+                            type="checkbox"
+                            checked={isActive}
+                            onChange={(e) => {
+                              setIsActive(e.target.checked);
+                              markDirty();
+                            }}
+                          />
+                          <span className="admin-switch-track" aria-hidden="true" />
+                          <span>Ativo para vendas</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="admin-description-block">
-                    {showDescription || description.trim() ? (
+                  <div className="admin-card admin-card-description">
+                    <div className="admin-card-header admin-card-header-inline">
+                      <h3 className="admin-card-title">Descrição</h3>
+                      {!showDescription && !description.trim() && (
+                        <button
+                          type="button"
+                          className="admin-button-outline admin-button-compact"
+                          onClick={() => setShowDescription(true)}
+                        >
+                          + Descrição
+                        </button>
+                      )}
+                    </div>
+                    {(showDescription || description.trim()) && (
                       <label className="admin-field admin-textarea-field">
                         <span>Descrição (opcional)</span>
                         <textarea
@@ -1271,19 +1355,11 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                           placeholder="Resumo simples para o catálogo"
                         />
                       </label>
-                    ) : (
-                      <button
-                        type="button"
-                        className="admin-button-outline"
-                        onClick={() => setShowDescription(true)}
-                      >
-                        Adicionar descrição
-                      </button>
                     )}
                   </div>
 
-                  <details className="admin-advanced-panel">
-                    <summary>Avançado: SKU</summary>
+                  <details className="admin-card admin-card-advanced">
+                    <summary>Avançado</summary>
                     <div className="admin-advanced-body">
                       <label className="admin-field">
                         <span>SKU *</span>
@@ -1309,18 +1385,12 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                           >
                             {generatingSku ? 'Gerando...' : 'Gerar SKU'}
                           </button>
-                          <button
-                            type="button"
-                            className="admin-button-ghost"
-                            onClick={handleToggleSkuEdit}
-                          >
-                            {skuEditable ? 'Bloquear edição' : 'Liberar edição'}
+                          <button type="button" className="admin-button-ghost" onClick={handleToggleSkuEdit}>
+                            {skuEditable ? 'Bloquear' : 'Editar'}
                           </button>
                         </div>
                         <small className="admin-helper-text">
-                          {skuEditable
-                            ? 'Edição liberada. Confirme o valor antes de salvar.'
-                            : 'SKU protegido. Use “Gerar SKU” ou libere a edição manual.'}
+                          {skuEditable ? 'Edição liberada.' : 'Use “Gerar SKU” ou libere a edição.'}
                         </small>
                       </label>
                     </div>
@@ -1329,49 +1399,40 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
               )}
 
               {currentStep === 1 && (
-                <section className="admin-step-panel">
-                  <div className="admin-step-header">
+                <section className="admin-step-panel admin-step-panel-pricing">
+                  <div className="admin-step-header admin-step-header-compact">
                     <div>
-                      <p className="admin-section-kicker">Passo 2</p>
-                      <h3 className="admin-section-title">Preço por quantidade (opcional)</h3>
-                      <p className="admin-section-helper">
-                        Use para dar desconto por quantidade. Se não usar, deixe vazio.
-                      </p>
+                      <h3 className="admin-section-title">Preço por quantidade</h3>
+                      <p className="admin-section-helper">Opcional</p>
                     </div>
                     <div className="admin-section-actions">
-                      <button
-                        type="button"
-                        className="admin-button-outline"
-                        onClick={handleAddQuantityPrice}
-                      >
-                        Adicionar faixa
+                      <button type="button" className="admin-button-outline" onClick={handleAddQuantityPrice}>
+                        Adicionar Faixa
                       </button>
                     </div>
                   </div>
 
                   {quantityPrices.length === 0 ? (
-                    <div className="admin-empty-state">
-                      <p className="admin-empty-title">Nenhuma faixa configurada.</p>
-                      <p className="admin-empty-helper">Você pode manter apenas o preço base.</p>
+                    <div className="admin-empty-state admin-empty-state-compact">
+                      <p className="admin-empty-title">Nenhuma faixa cadastrada para o produto</p>
+                      <p className="admin-empty-helper">Use “Adicionar Faixa” para adicionar.</p>
                     </div>
                   ) : (
-                    <div className="admin-quantity-list">
+                    <div className="admin-quantity-list admin-quantity-list-compact">
                       {quantityPrices.map((row, index) => {
                         const rowErrors = getQuantityRowErrors(row, minCountMap);
                         const rowErrorList = getQuantityRowErrorList(row, minCountMap);
                         const noMax = row.max_quantity === null;
                         return (
-                          <div key={`row-${row.id}`} className="admin-quantity-card">
-                            <div className="admin-quantity-fields">
+                          <div key={`row-${row.id}`} className="admin-card admin-quantity-card admin-quantity-card-compact">
+                            <div className="admin-quantity-grid">
                               <label className="admin-field">
-                                <span>A partir de (mínimo)</span>
+                                <span>A partir de</span>
                                 <input
                                   type="number"
                                   min={1}
                                   value={row.min_quantity}
-                                  onChange={(e) =>
-                                    handleQuantityPriceChange(index, 'min_quantity', e.target.value)
-                                  }
+                                  onChange={(e) => handleQuantityPriceChange(index, 'min_quantity', e.target.value)}
                                   className={`admin-input${rowErrors.min.length ? ' has-error' : ''}`}
                                   aria-invalid={rowErrors.min.length > 0}
                                 />
@@ -1380,17 +1441,15 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                 )}
                               </label>
                               <div className="admin-field">
-                                <span>Até (máximo)</span>
+                                <span>Até</span>
                                 <input
                                   type="number"
                                   min={row.min_quantity || 1}
                                   value={row.max_quantity ?? ''}
-                                  onChange={(e) =>
-                                    handleQuantityPriceChange(index, 'max_quantity', e.target.value)
-                                  }
+                                  onChange={(e) => handleQuantityPriceChange(index, 'max_quantity', e.target.value)}
                                   className={`admin-input${rowErrors.max.length ? ' has-error' : ''}`}
                                   aria-invalid={rowErrors.max.length > 0}
-                                  aria-label="Até (máximo)"
+                                  aria-label="Até"
                                   placeholder="Sem máximo"
                                   disabled={noMax}
                                 />
@@ -1399,9 +1458,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                     <input
                                       type="checkbox"
                                       checked={noMax}
-                                      onChange={(e) =>
-                                        handleToggleMaxQuantity(index, e.target.checked)
-                                      }
+                                      onChange={(e) => handleToggleMaxQuantity(index, e.target.checked)}
                                     />
                                     <span>Sem máximo</span>
                                   </label>
@@ -1411,34 +1468,23 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                 )}
                               </div>
                               <label className="admin-field">
-                                <span>Preço por unidade (R$)</span>
+                                <span>Preço por unidade</span>
                                 <input
                                   type="text"
                                   inputMode="decimal"
                                   value={row.unitPriceInput}
-                                  onChange={(e) =>
-                                    handleQuantityPriceChange(index, 'unitPriceInput', e.target.value)
-                                  }
+                                  onChange={(e) => handleQuantityPriceChange(index, 'unitPriceInput', e.target.value)}
                                   className={`admin-input${rowErrors.price.length ? ' has-error' : ''}`}
                                   aria-invalid={rowErrors.price.length > 0}
                                   placeholder="Ex.: 5,50"
                                 />
-                                <small className="admin-helper-text">
-                                  {row.unit_price_cents > 0
-                                    ? formatCurrencyFromCents(row.unit_price_cents)
-                                    : 'Digite o preço em R$'}
-                                </small>
                                 {rowErrors.price.length > 0 && (
                                   <small className="admin-field-error">{rowErrors.price.join(' ')}</small>
                                 )}
                               </label>
                             </div>
-                            <div className="admin-quantity-footer">
-                              <span
-                                className={`admin-quantity-preview${
-                                  rowErrorList.length > 0 ? ' has-error' : ''
-                                }`}
-                              >
+                            <div className="admin-quantity-footer admin-quantity-footer-compact">
+                              <span className={`admin-quantity-preview${rowErrorList.length > 0 ? ' has-error' : ''}`}>
                                 {formatQuantityPreview(row)}
                               </span>
                               <button
@@ -1446,7 +1492,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                 className="admin-button-ghost"
                                 onClick={() => handleRemoveQuantityPrice(index)}
                               >
-                                Remover faixa
+                                Remover
                               </button>
                             </div>
                           </div>
@@ -1458,291 +1504,291 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
               )}
 
               {currentStep === 2 && (
-                <section className="admin-step-panel">
-                  <div className="admin-step-header">
+                <section
+                  className="admin-step-panel admin-step-panel-custom"
+                  style={{ background: '#0c0c12', borderRadius: '16px', padding: '12px' }}
+                >
+                  <div className="admin-step-header admin-step-header-compact">
                     <div>
-                      <p className="admin-section-kicker">Passo 3</p>
-                      <h3 className="admin-section-title">Personalizações do cliente (opcional)</h3>
-                      <p className="admin-section-helper">
-                        Crie perguntas para o cliente escolher no pedido. Ex.: Recheio, Cobertura,
-                        Mensagem no cartão.
-                      </p>
-                      <span className="admin-step-count">{questionsSummary}</span>
-                    </div>
-                    <div className="admin-section-actions">
-                      <button
-                        type="button"
-                        className="admin-button-outline admin-button-wide"
-                        onClick={handleAddField}
-                      >
-                        + Adicionar pergunta
-                      </button>
+                      <h3 className="admin-section-title" style={{ color: '#fff' }}>
+                        Configure nessa aba, as personalizações que o cliente pode fazer:
+                      </h3>
+                      <span className="admin-step-count" style={{ color: '#6f7380' }}>
+                        {questionsSummary}
+                      </span>
                     </div>
                   </div>
 
-                  {fields.length === 0 ? (
-                    <div className="admin-empty-state">
-                      <p className="admin-empty-title">Nenhuma pergunta configurada.</p>
-                      <p className="admin-empty-helper">
-                        Use o botão “Adicionar pergunta” para começar.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="admin-question-list">
-                      {fields.map((field, index) => (
-                        <div key={field.clientId} className="admin-question-card">
-                          <div className="admin-question-header">
-                            <div>
-                              <p className="admin-section-kicker">Pergunta {index + 1}</p>
-                              <h4 className="admin-section-title">
-                                {field.label?.trim() ? field.label : `Pergunta ${index + 1}`}
-                              </h4>
-                              <p className="admin-section-helper">
-                                Defina o texto e o tipo de resposta para o cliente.
-                              </p>
-                            </div>
-                          </div>
+                  <div className="admin-card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                    {fields.map((field, index) => {
+                      const questionLabel = field.label?.trim() ? field.label : `Pergunta ${index + 1}`;
+                      const optionCount = field.input_type === 'select' ? field.options.length : 0;
+                      const optionLabel = `${optionCount} ${optionCount === 1 ? 'opção criada' : 'opções criadas'}`;
 
-                          <div className="admin-question-grid">
-                            <label className="admin-field admin-field-full">
-                              <span>Nome da pergunta *</span>
-                              <input
-                                type="text"
-                                value={field.label}
-                                onChange={(e) => handleUpdateField(field.clientId!, 'label', e.target.value)}
-                                className="admin-input"
-                                placeholder="Ex.: Escolha o recheio"
-                              />
-                            </label>
-                            <label className="admin-field">
-                              <span>Tipo de resposta</span>
-                              <select
-                                value={field.input_type}
-                                onChange={(e) =>
-                                  handleUpdateField(field.clientId!, 'input_type', e.target.value)
-                                }
-                                className="admin-select"
-                              >
-                                {DETAIL_INPUT_TYPES.map((typeOption) => (
-                                  <option key={typeOption.value} value={typeOption.value}>
-                                    {typeOption.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <div className="admin-question-toggles">
-                              <label className="admin-switch">
-                                <input
-                                  type="checkbox"
-                                  checked={field.is_required}
-                                  onChange={(e) =>
-                                    handleUpdateField(field.clientId!, 'is_required', e.target.checked)
-                                  }
-                                />
-                                <span className="admin-switch-track" aria-hidden="true" />
-                                <span>Obrigatório</span>
-                              </label>
-                              <label className="admin-switch">
-                                <input
-                                  type="checkbox"
-                                  checked={field.is_active}
-                                  onChange={(e) =>
-                                    handleUpdateField(field.clientId!, 'is_active', e.target.checked)
-                                  }
-                                />
-                                <span className="admin-switch-track" aria-hidden="true" />
-                                <span>Ativo</span>
-                              </label>
-                            </div>
-                          </div>
+                      return (
+                        <details key={field.clientId} name="question-editor">
+                          <summary className="admin-detail-card" style={{ listStyle: 'none' }}>
+                            <span className="admin-section-kicker">Pergunta {index + 1}</span>
+                            <h4 className="admin-card-title-custom">{questionLabel}</h4>
+                            <span className="admin-helper-text" style={{ color: '#6f7380' }}>
+                              {optionLabel}
+                            </span>
+                          </summary>
 
-                          <label className="admin-field admin-detail-help">
-                            <span>Texto de ajuda (opcional)</span>
-                            <input
-                              type="text"
-                              value={field.help_text ?? ''}
-                              onChange={(e) => handleUpdateField(field.clientId!, 'help_text', e.target.value)}
-                              className="admin-input"
-                              placeholder="Ex.: Esta informação aparece no resumo do pedido."
-                            />
-                          </label>
-
-                          {field.input_type === 'select' && (
-                            <div className="admin-option-section">
-                              <div className="admin-option-header">
+                          <div
+                            className="admin-modal-backdrop admin-modal-backdrop-full"
+                            style={{ background: '#000' }}
+                          >
+                            <div
+                              className="admin-modal"
+                              style={{ width: '100%', height: '100%', maxHeight: '100vh', borderRadius: 0, background: '#000', }}
+                            >
+                              <header className="admin-modal-header-question">
                                 <div>
-                                  <p className="admin-section-kicker">Opções</p>
-                                  <h4 className="admin-section-title">Escolhas disponíveis</h4>
-                                  <p className="admin-section-helper">
-                                    Informe o adicional por unidade, se houver.
-                                  </p>
+                                  <p className="admin-modal-subtitle">Pergunta número {index + 1}</p>
+                                  <h2 className="admin-modal-title-question">
+                                    {questionLabel}
+                                  </h2>
                                 </div>
-                                <div className="admin-section-actions">
-                                  <button
-                                    type="button"
-                                    className="admin-button-outline"
-                                    onClick={() => handleAddOption(field.clientId!)}
+                              </header>
+
+                              <div className="admin-modal-body">
+                                <section className="admin-detail-card">
+                                  <div className="admin-card-header" style={{ justifyContent: 'center' }}>
+                                    <h3 className="admin-card-title-question">Nome e tipo de pergunta</h3>
+                                  </div>
+                                  <div
+                                    className="admin-field-grid-compact"
+                                    style={{ gridTemplateColumns: '2fr 1fr auto auto', alignItems: 'center' }}
                                   >
-                                    + Adicionar opção
+                                    <label className="admin-field" aria-label="Pergunta">
+                                      <input
+                                        type="text"
+                                        value={field.label}
+                                        onChange={(e) => handleUpdateField(field.clientId!, 'label', e.target.value)}
+                                        className="admin-input"
+                                        style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                        placeholder="Pergunta"
+                                      />
+                                    </label>
+                                    <label className="admin-field" aria-label="Tipo">
+                                      <select
+                                        value={field.input_type}
+                                        onChange={(e) => handleUpdateField(field.clientId!, 'input_type', e.target.value)}
+                                        className="admin-select"
+                                        style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                      >
+                                        {DETAIL_INPUT_TYPES.map((typeOption) => (
+                                          <option key={typeOption.value} value={typeOption.value}>
+                                            {typeOption.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="admin-switch" style={{ color: '#111' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={field.is_required}
+                                        onChange={(e) =>
+                                          handleUpdateField(field.clientId!, 'is_required', e.target.checked)
+                                        }
+                                      />
+                                      <span className="admin-switch-track" aria-hidden="true" />
+                                      <span>Obrigatório</span>
+                                    </label>
+                                    <label className="admin-switch" style={{ color: '#111' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={field.is_active}
+                                        onChange={(e) => handleUpdateField(field.clientId!, 'is_active', e.target.checked)}
+                                      />
+                                      <span className="admin-switch-track" aria-hidden="true" />
+                                      <span>Ativo</span>
+                                    </label>
+                                  </div>
+                                </section>
+
+                                <div style={{ borderBottom: '1px solid rgba(0, 0, 0, 0.08)' }} />
+
+                                <section className="admin-detail-card">
+                                  <div className="admin-card-header" style={{ justifyContent: 'center' }}>
+                                    <h3 className="admin-card-title-question">Opções</h3>
+                                  </div>
+                                  {field.input_type !== 'select' ? (
+                                    <p className="admin-modal-helper">Disponível apenas para o tipo “Escolha única”.</p>
+                                  ) : (
+                                    <>
+                                      {field.options.length === 0 ? (
+                                        <div className="admin-empty" style={{ color: '#000', background: '#fff'}}>
+                                          Nenhuma opção cadastrada.
+                                        </div>
+                                      ) : (
+                                        <div className="admin-detail-grid">
+                                          {field.options.map((opt, optionIndex) => (
+                                            <div
+                                              key={opt.clientId}
+                                              className="admin-options-row"
+                                              style={{
+                                                gridTemplateColumns: '120px 1fr 70px 1fr 44px',
+                                              }}
+                                            >
+                                              <span className="admin-section-kicker" style={{ color: '#6f7380' }}>
+                                                {optionIndex + 1}ª opção
+                                              </span>
+                                              <input
+                                                type="text"
+                                                value={opt.label}
+                                                onChange={(e) =>
+                                                  handleUpdateOption(
+                                                    field.clientId!,
+                                                    opt.clientId!,
+                                                    'label',
+                                                    e.target.value
+                                                  )
+                                                }
+                                                className="admin-input"
+                                                style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                                placeholder="Nome"
+                                                aria-label={`Nome da opção ${optionIndex + 1}`}
+                                              />
+                                              <span className="admin-section-kicker" style={{ color: '#6f7380' }}>
+                                                + R$
+                                              </span>
+                                              <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={opt.extraPriceInput ?? centsToInput(opt.extra_price_delta_cents ?? 0)}
+                                                onChange={(e) =>
+                                                  handleOptionPriceInputChange(
+                                                    field.clientId!,
+                                                    opt.clientId!,
+                                                    e.target.value
+                                                  )
+                                                }
+                                                onBlur={() =>
+                                                  handleOptionPriceInputBlur(field.clientId!, opt.clientId!)
+                                                }
+                                                className="admin-input"
+                                                style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                                placeholder="0,00"
+                                                aria-label={`Valor adicional da opção ${optionIndex + 1}`}
+                                              />
+                                              <button
+                                                type="button"
+                                                className="admin-button-ghost"
+                                                onClick={() => handleRemoveOption(field.clientId!, opt.clientId!)}
+                                                aria-label={`Remover opção ${optionIndex + 1}`}
+                                              >
+                                                ✕
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="admin-button-outline"
+                                        onClick={() => handleAddOption(field.clientId!)}
+                                      >
+                                        + Opção
+                                      </button>
+                                    </>
+                                  )}
+                                </section>
+
+                                <details className="admin-advanced-panel" style={{ opacity: 0.85 }}>
+                                  <summary>Avançado</summary>
+                                  <div className="admin-advanced-body admin-advanced-fields">
+                                    <label className="admin-field">
+                                      <span>Identificador interno</span>
+                                      <input
+                                        type="text"
+                                        value={field.field_key}
+                                        onChange={(e) => handleUpdateField(field.clientId!, 'field_key', e.target.value)}
+                                        className="admin-input"
+                                        style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                        placeholder="Ex.: recheio"
+                                      />
+                                    </label>
+                                    <label className="admin-field">
+                                      <span>Ordem</span>
+                                      <input
+                                        type="number"
+                                        value={field.sort_order}
+                                        onChange={(e) => handleUpdateField(field.clientId!, 'sort_order', e.target.value)}
+                                        className="admin-input"
+                                        style={{ background: '#fff', color: '#111', borderColor: '#e7e7e9' }}
+                                      />
+                                    </label>
+                                  </div>
+                                </details>
+                              </div>
+
+                              <footer className="admin-modal-footer">
+                                <div className="admin-footer-actions">
+                                  {isDirty ? (
+                                    <details className="admin-advanced-panel">
+                                      <summary className="admin-button-ghost">Voltar</summary>
+                                      <div>
+                                        <p className="admin-helper-text" style={{ color: '#6f7380' }}>
+                                          Há alterações não salvas.
+                                        </p>
+                                        <button type="button" className="admin-button-outline" onClick={onClose}>
+                                          Voltar sem salvar
+                                        </button>
+                                      </div>
+                                    </details>
+                                  ) : (
+                                    <button type="button" className="admin-button-ghost" onClick={onClose}>
+                                      Voltar
+                                    </button>
+                                  )}
+
+                                  <details className="admin-advanced-panel">
+                                    <summary className="admin-button-outline admin-button-danger-outline">
+                                      Excluir pergunta
+                                    </summary>
+                                    <div>
+                                      <p className="admin-helper-text" style={{ color: '#6f7380' }}>
+                                        Confirmar exclusão da pergunta?
+                                      </p>
+                                      <button
+                                        type="button"
+                                        className="admin-button admin-button-danger"
+                                        onClick={() => handleRemoveField(field.clientId!)}
+                                      >
+                                        Excluir agora
+                                      </button>
+                                    </div>
+                                  </details>
+
+                                  <button type="button" className="admin-button" onClick={handleSave}>
+                                    Salvar pergunta
                                   </button>
                                 </div>
-                              </div>
-
-                              {field.options.length === 0 ? (
-                                <div className="admin-empty">Nenhuma opção cadastrada.</div>
-                              ) : (
-                                <div className="admin-option-list">
-                                  {field.options.map((opt) => (
-                                    <div key={opt.clientId} className="admin-option-card">
-                                      <div className="admin-option-row">
-                                        <label className="admin-field">
-                                          <span>Nome da opção</span>
-                                          <input
-                                            type="text"
-                                            value={opt.label}
-                                            onChange={(e) =>
-                                              handleUpdateOption(
-                                                field.clientId!,
-                                                opt.clientId!,
-                                                'label',
-                                                e.target.value
-                                              )
-                                            }
-                                            className="admin-input"
-                                            placeholder="Ex.: Chocolate"
-                                          />
-                                        </label>
-                                        <label className="admin-field">
-                                          <span>Adicional por unidade (R$)</span>
-                                          <input
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={centsToInput(opt.extra_price_delta_cents ?? 0)}
-                                            onChange={(e) =>
-                                              handleUpdateOption(
-                                                field.clientId!,
-                                                opt.clientId!,
-                                                'extra_price_delta_cents',
-                                                Math.round(parseCurrencyInput(e.target.value || '0') * 100)
-                                              )
-                                            }
-                                            className="admin-input"
-                                            placeholder="0,00"
-                                          />
-                                        </label>
-                                        <div className="admin-option-actions">
-                                          <button
-                                            type="button"
-                                            className="admin-button-ghost"
-                                            onClick={() => handleRemoveOption(field.clientId!, opt.clientId!)}
-                                          >
-                                            Remover
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <details className="admin-advanced-panel admin-option-advanced">
-                                        <summary>Avançado</summary>
-                                        <div className="admin-advanced-body admin-option-advanced-fields">
-                                          <label className="admin-field">
-                                            <span>Código interno (opcional)</span>
-                                            <input
-                                              type="text"
-                                              value={opt.value}
-                                              onChange={(e) =>
-                                                handleUpdateOption(
-                                                  field.clientId!,
-                                                  opt.clientId!,
-                                                  'value',
-                                                  e.target.value
-                                                )
-                                              }
-                                              className="admin-input"
-                                              placeholder="Gerado automaticamente"
-                                            />
-                                          </label>
-                                          <label className="admin-field">
-                                            <span>Ordem (opcional)</span>
-                                            <input
-                                              type="number"
-                                              value={opt.sort_order}
-                                              onChange={(e) =>
-                                                handleUpdateOption(
-                                                  field.clientId!,
-                                                  opt.clientId!,
-                                                  'sort_order',
-                                                  e.target.value
-                                                )
-                                              }
-                                              className="admin-input"
-                                            />
-                                          </label>
-                                        </div>
-                                      </details>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="admin-option-preview">
-                                <span className="admin-helper-text">Prévia para o cliente</span>
-                                <p className="admin-preview-text">{formatOptionsPreview(field)}</p>
-                              </div>
+                              </footer>
                             </div>
-                          )}
-
-                          <details className="admin-advanced-panel">
-                            <summary>Avançado</summary>
-                            <div className="admin-advanced-body admin-advanced-fields">
-                              <label className="admin-field">
-                                <span>Identificador interno (automático)</span>
-                                <input
-                                  type="text"
-                                  value={field.field_key}
-                                  onChange={(e) =>
-                                    handleUpdateField(field.clientId!, 'field_key', e.target.value)
-                                  }
-                                  className="admin-input"
-                                  placeholder="Ex.: recheio"
-                                />
-                                <small className="admin-helper-text">
-                                  Gerado a partir do nome da pergunta.
-                                </small>
-                              </label>
-                              <label className="admin-field">
-                                <span>Ordem (opcional)</span>
-                                <input
-                                  type="number"
-                                  value={field.sort_order}
-                                  onChange={(e) =>
-                                    handleUpdateField(field.clientId!, 'sort_order', e.target.value)
-                                  }
-                                  className="admin-input"
-                                />
-                              </label>
-                            </div>
-                          </details>
-
-                          <div className="admin-question-footer">
-                            <button
-                              type="button"
-                              className="admin-button admin-button-danger"
-                              onClick={() => handleRemoveField(field.clientId!)}
-                            >
-                              Remover pergunta
-                            </button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        </details>
+                      );
+                    })}
+
+                    <button type="button" className="admin-detail-card" onClick={handleAddField}>
+                      <span className="admin-section-kicker">Nova pergunta</span>
+                      <h4 className="admin-card-title-custom">+ Clique aqui para adicionar uma nova pergunta</h4>
+                      <span className="admin-helper-text" style={{ color: '#6f7380' }}>
+                        Adicionar
+                      </span>
+                    </button>
+                  </div>
                 </section>
               )}
             </div>
 
-            <div className="admin-modal-footer">
+            <footer className="admin-modal-footer admin-modal-footer-fixed">
               <div className="admin-footer-actions">
                 <button type="button" className="admin-button-ghost" onClick={onClose}>
-                  Cancelar
+                  Sair sem salvar
                 </button>
                 {!isCreateMode && (
                   <button
@@ -1751,7 +1797,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                     onClick={handleSoftDelete}
                     disabled={deleting || saving || imageUploading}
                   >
-                    {deleting ? 'Excluindo...' : 'Excluir'}
+                    {deleting ? 'Excluindo...' : 'Excluir produto'}
                   </button>
                 )}
                 <button
@@ -1760,10 +1806,10 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                   onClick={handleSave}
                   disabled={saving || imageUploading || deleting}
                 >
-                  {saving ? 'Salvando...' : 'Salvar alterações'}
+                  {saving ? 'Salvando...' : 'Salvar produto'}
                 </button>
               </div>
-            </div>
+            </footer>
           </>
         )}
       </div>

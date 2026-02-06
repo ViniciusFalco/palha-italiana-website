@@ -5,6 +5,7 @@ import ProductSelector from '../components/ProductSelector';
 import { FaShoppingCart, FaPlus, FaArrowLeft } from 'react-icons/fa';
 import type { CartItem, FormData, ProductOption } from '../types';
 import { supabase } from '../lib/supabase';
+import { supabaseAnon } from '../lib/supabaseAnon';
 import { fetchCatalog, type UIProduct } from '../lib/catalog';
 
 type CategoryKey = 'packaging' | 'party' | 'cake';
@@ -126,7 +127,7 @@ const OrderPage = () => {
         { size: '5 Kg', price: 349.50 },
       ],
     },
-    
+
     // DOCES DE FESTAS
     {
       name: 'Docinho de Palha Italiana - Na Forminha',
@@ -149,7 +150,7 @@ const OrderPage = () => {
       requiresRibbonColor: true,
       minQuantity: 100,
     },
-    
+
     // TORTAS
     {
       name: 'Torta Rústica',
@@ -315,16 +316,16 @@ const OrderPage = () => {
 
   const addToCart = (item: CartItem) => {
     setCartItems(prev => {
-      const existingItem = prev.find(cartItem => 
-        cartItem.name === item.name && 
-        cartItem.flavor === item.flavor && 
+      const existingItem = prev.find(cartItem =>
+        cartItem.name === item.name &&
+        cartItem.flavor === item.flavor &&
         cartItem.coverage === item.coverage &&
         cartItem.size === item.size &&
         cartItem.ribbonWidth === item.ribbonWidth &&
         cartItem.ribbonColor === item.ribbonColor &&
         cartItem.formColor === item.formColor
       );
-      
+
       if (existingItem) {
         return prev.map(cartItem =>
           cartItem === existingItem
@@ -342,6 +343,7 @@ const OrderPage = () => {
       [formData.street, formData.houseNumber, formData.noComplement ? '' : formData.addressComplement]
         .filter(Boolean)
         .join(', ');
+
     const paymentLabel =
       formData.paymentMethod === 'credit'
         ? 'Cartão de Crédito'
@@ -373,7 +375,8 @@ const OrderPage = () => {
     const eventDate = (formData as any).eventDate ?? (formData as any).event_date ?? null;
     const orderNote = (formData as any).note ?? (formData as any).observation ?? null;
 
-    const { data: order, error: orderError } = await supabase
+    // ✅ AQUI: grava o pedido com ANON
+    const { data: order, error: orderError } = await supabaseAnon
       .from('orders')
       .insert({
         customer_name: formData.name,
@@ -419,7 +422,8 @@ const OrderPage = () => {
         };
       });
 
-      const { data: insertedItems, error: itemsError } = await supabase
+      // ✅ AQUI: grava items com ANON
+      const { data: insertedItems, error: itemsError } = await supabaseAnon
         .from('order_items')
         .insert(itemsPayload)
         .select('id, order_id, product_id, product_option_id');
@@ -468,7 +472,11 @@ const OrderPage = () => {
       }
 
       if (detailRows.length > 0) {
-        const { error: detailsError } = await supabase.from('order_item_details').insert(detailRows);
+        // ✅ AQUI: grava details com ANON
+        const { error: detailsError } = await supabaseAnon
+          .from('order_item_details')
+          .insert(detailRows);
+
         if (detailsError) {
           if (import.meta.env.DEV) {
             console.error('Erro ao inserir order_item_details', {
@@ -491,7 +499,7 @@ const OrderPage = () => {
     localStorage.setItem('order_status', 'pending');
     const encodedMessage = encodeURIComponent(message);
     window.open(`https://wa.me/5521985767312?text=${encodedMessage}`, '_blank');
-    
+
     setIsCheckoutOpen(false);
     setCartItems([]);
   };
@@ -536,7 +544,7 @@ const OrderPage = () => {
           : 0,
       }));
     }, BACKGROUND_ROTATION_MS);
-    // avanço inicial mais rápido para evitar espera longa na primeira exibição
+
     const kickoff = setTimeout(() => {
       setBgIndexes((prev) => ({
         packaging: categoryBackgrounds.packaging.length > 0
@@ -550,6 +558,7 @@ const OrderPage = () => {
           : 0,
       }));
     }, Math.min(2500, BACKGROUND_ROTATION_MS / 2));
+
     return () => {
       clearInterval(interval);
       clearTimeout(kickoff);
@@ -700,8 +709,8 @@ const OrderPage = () => {
                           </div>
 
                           <div className="flex items-center justify-between gap-3 pt-1">
-                          <button
-                            onClick={() => setSelectedProduct(product)}
+                            <button
+                              onClick={() => setSelectedProduct(product)}
                               className="inline-flex items-center justify-center gap-2 rounded-lg font-semibold shadow-lg transition-all px-4 py-3 bg-primary text-white hover:bg-pink-600"
                             >
                               <FaPlus size={14} />
