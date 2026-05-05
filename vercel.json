@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/admin/:path*", "destination": "/" },
-    { "source": "/pedidos", "destination": "/" }
+    { "source": "/(.*)", "destination": "/" }
   ]
 }
