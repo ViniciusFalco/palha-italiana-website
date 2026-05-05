@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { FaRegCopy, FaSearch } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
+import { AdminPageHeader } from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth/AuthProvider';
 
@@ -785,20 +786,16 @@ export default function ReceiptsPage() {
 
   return (
     <div className="admin-page">
-      <div className="admin-page-header">
-        <div>
-          <p className="admin-page-kicker">Financeiro</p>
-          <h1 className="admin-page-title">Recibos</h1>
-          <p className="admin-page-subtitle">
-            Visualize e emita recibos dos pedidos concluídos sem perder contexto.
-          </p>
-        </div>
-        <div className="admin-page-actions">
+      <AdminPageHeader
+        kicker="Financeiro"
+        title="Recibos"
+        subtitle="Visualize, emita e revise recibos dos pedidos concluidos sem perder contexto."
+        actions={
           <button type="button" className="admin-button-outline" onClick={loadData} disabled={loading}>
             {loading ? 'Atualizando...' : 'Atualizar'}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {successMessage && <div className="admin-alert">{successMessage}</div>}
       {error && <div className="admin-inline-error">{error}</div>}

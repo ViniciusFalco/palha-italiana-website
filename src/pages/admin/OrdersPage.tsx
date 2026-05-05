@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FaRegCopy, FaSearch } from 'react-icons/fa';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FaCalendarAlt, FaCheck, FaEdit, FaMapMarkerAlt, FaRegCommentDots, FaRegCopy, FaSearch, FaTimes, FaTrash, FaUser } from 'react-icons/fa';
+import { AdminPageHeader, AdminToastStack } from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth/AuthProvider';
+import { BiSolidDetail } from 'react-icons/bi';
+import { resolveUnitPriceCents } from '../../lib/api/pricing';
+import { fetchProductDetailFields } from '../../lib/api/products';
+import type { ProductDetailField, ProductDetailSelection } from '../../types/productDetail';
+import { IoClose } from 'react-icons/io5';
 
 type OrderStatus = 'pending' | 'in_progress' | 'finished' | 'rejected' | 'canceled';
 
@@ -29,6 +35,17 @@ type Order = {
   customer_name: string | null;
   customer_phone: string | null;
   customer_email?: string | null;
+  customer_address?: string | null;
+  address_street?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  address_neighborhood?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_cep?: string | null;
+  address_latitude?: number | null;
+  address_longitude?: number | null;
+  address_source?: string | null;
   note?: string | null;
   event_date?: string | null;
   total_cents: number;
@@ -53,6 +70,38 @@ type Toast = {
   message: string;
   variant?: ToastVariant;
   durationMs?: number;
+};
+
+type CreateOrderStatus = Extract<OrderStatus, 'pending' | 'in_progress'>;
+
+type CreateOrderProduct = {
+  id: string;
+  name: string;
+  base_price_cents: number;
+  min_quantity: number | null;
+};
+
+type DetailValueDraft = string | string[];
+
+type CreateOrderItemDetailDraft = {
+  field_id: string;
+  field_key: string;
+  label: string;
+  value: string;
+  display_value: string;
+  extra_price_delta_cents: number;
+  input_type: ProductDetailSelection['inputType'];
+};
+
+type CreateOrderItemDraft = {
+  client_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price_cents: number;
+  unitPriceInput: string;
+  subtotal_cents: number;
+  manualPrice: boolean;
+  details: CreateOrderItemDetailDraft[];
 };
 
 const STATUS_TABS: Array<{ value: OrderStatus; label: string }> = [
@@ -104,7 +153,12 @@ const DEFAULT_STATUS_COUNTS: Record<OrderStatus, number> = {
   canceled: 0,
 };
 
-const ORDER_SELECT_WITH_ITEMS = `
+const CREATE_ORDER_STATUS_OPTIONS: Array<{ value: CreateOrderStatus; label: string }> = [
+  { value: 'pending', label: 'Pendente' },
+  { value: 'in_progress', label: 'Em andamento' },
+];
+
+const ORDER_SELECT_BASE_WITH_ITEMS = `
   id,
   created_at,
   customer_name,
@@ -145,6 +199,64 @@ const ORDER_SELECT_WITH_ITEMS = `
     )
   )
 `;
+
+const ORDER_SELECT_WITH_ITEMS = `
+  id,
+  created_at,
+  customer_name,
+  customer_phone,
+  customer_email,
+  customer_address,
+  address_street,
+  address_number,
+  address_complement,
+  address_neighborhood,
+  address_city,
+  address_state,
+  address_cep,
+  address_latitude,
+  address_longitude,
+  address_source,
+  note,
+  event_date,
+  total_cents,
+  status,
+  delivery_date,
+  payment_due,
+  payment_method,
+  payment_status,
+  rejection_reason_text,
+  cancellation_reason_code,
+  cancellation_reason_text,
+  last_whatsapp_sent_at,
+  order_items (
+    id,
+    order_id,
+    product_id,
+    product_option_id,
+    quantity,
+    unit_price_cents,
+    subtotal_cents,
+    flavor,
+    coverage,
+    size,
+    ribbon_width,
+    ribbon_color,
+    form_color,
+    product:products (name, sku),
+    product_option:product_options (option_name),
+    details:order_item_details (
+      id,
+      value,
+      field:product_detail_fields (label)
+    )
+  )
+`;
+
+const shouldFallbackOrderSelect = (error: unknown) => {
+  const code = (error as { code?: string } | null)?.code;
+  return code === 'PGRST204' || code === '42703';
+};
 
 const loadStoredOrdersState = () => {
   if (typeof window === 'undefined') {
@@ -189,6 +301,29 @@ const formatPaymentStatus = (value?: string | null) => {
 const formatPaymentDue = (value?: boolean | null) => {
   if (value === null || value === undefined) return EMPTY_LABEL;
   return value ? 'Sim' : 'Não';
+};
+
+const formatOrderAddress = (order: Order) => {
+  const storedAddress = order.customer_address?.trim();
+  if (storedAddress) return storedAddress;
+
+  const noteAddress = order.note
+    ?.split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.toLowerCase().startsWith('endereço:') || line.toLowerCase().startsWith('endereco:'))
+    ?.replace(/^endere[cç]o:\s*/i, '')
+    .trim();
+  if (noteAddress) return noteAddress;
+
+  const base = [order.address_street?.trim(), order.address_number?.trim()].filter(Boolean).join(', ');
+  const complement = order.address_complement?.trim();
+  const cityState = [order.address_city?.trim(), order.address_state?.trim()].filter(Boolean).join(' - ');
+  const cep = order.address_cep?.trim();
+  const address = [base, complement, order.address_neighborhood?.trim(), cityState, cep ? `CEP ${cep}` : '']
+    .filter(Boolean)
+    .join(' • ');
+
+  return address || EMPTY_LABEL;
 };
 
 const isSameDay = (value: string | null | undefined, reference: Date) => {
@@ -254,6 +389,117 @@ const formatDate = (value?: string | null) => {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
 };
 
+const extractSupabaseErrorMessage = (error: unknown, fallback: string) => {
+  if (!error) return fallback;
+  if (error instanceof Error) return error.message || fallback;
+
+  if (typeof error === 'object') {
+    const maybeMessage = (error as { message?: unknown }).message;
+    const maybeDetails = (error as { details?: unknown }).details;
+    const maybeHint = (error as { hint?: unknown }).hint;
+    const message = typeof maybeMessage === 'string' ? maybeMessage.trim() : '';
+    const details = typeof maybeDetails === 'string' ? maybeDetails.trim() : '';
+    const hint = typeof maybeHint === 'string' ? maybeHint.trim() : '';
+    if (message && details) return `${message} (${details})`;
+    if (message && hint) return `${message} (${hint})`;
+    if (message) return message;
+  }
+
+  return fallback;
+};
+
+const parseCurrencyInput = (value: string) => {
+  const normalized = value.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 100)) : 0;
+};
+
+const centsToInput = (value: number) => {
+  const cents = Number.isFinite(value) ? value : 0;
+  return (cents / 100).toFixed(2).replace('.', ',');
+};
+
+const createTempId = () => `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+const getDetailTextValue = (value: DetailValueDraft | undefined) =>
+  (Array.isArray(value) ? value[0] ?? '' : value ?? '').trim();
+
+const getDetailSelectedValues = (value: DetailValueDraft | undefined) =>
+  Array.isArray(value)
+    ? value.map((item) => item.trim()).filter(Boolean)
+    : typeof value === 'string' && value.trim()
+      ? [value.trim()]
+      : [];
+
+const normalizeDetailValueForField = (field: ProductDetailField, value: DetailValueDraft | undefined): DetailValueDraft =>
+  field.input_type === 'multi_select'
+    ? getDetailSelectedValues(value)
+    : Array.isArray(value)
+      ? value[0] ?? ''
+      : value ?? '';
+
+const mapSelectionsToDetailDraft = (selections: ProductDetailSelection[]): CreateOrderItemDetailDraft[] =>
+  selections.map((selection) => ({
+    field_id: selection.fieldId,
+    field_key: selection.fieldKey,
+    label: selection.label,
+    value: selection.value,
+    display_value: selection.displayValue,
+    extra_price_delta_cents: selection.extraPriceDeltaCents,
+    input_type: selection.inputType,
+  }));
+
+const buildDetailSelections = (
+  fields: ProductDetailField[],
+  detailValues: Record<string, DetailValueDraft>
+): ProductDetailSelection[] =>
+  fields.flatMap((field) => {
+    const key = field.id ?? field.field_key;
+    if (field.input_type === 'multi_select') {
+      return getDetailSelectedValues(detailValues[key]).map((value) => {
+        const option = field.options?.find((opt) => opt.value === value);
+        return {
+          fieldId: field.id ?? '',
+          fieldKey: field.field_key,
+          label: field.label,
+          value,
+          displayValue: option?.label ?? value,
+          extraPriceDeltaCents: option?.extra_price_delta_cents ?? 0,
+          inputType: field.input_type,
+        };
+      });
+    }
+
+    const value = getDetailTextValue(detailValues[key]);
+    if (!value) return [];
+    const option = field.options?.find((opt) => opt.value === value);
+    return [
+      {
+        fieldId: field.id ?? '',
+        fieldKey: field.field_key,
+        label: field.label,
+        value,
+        displayValue: option?.label ?? value,
+        extraPriceDeltaCents: option?.extra_price_delta_cents ?? 0,
+        inputType: field.input_type,
+      },
+    ];
+  });
+
+const getInitialDetailValueFromItem = (
+  field: ProductDetailField,
+  details?: CreateOrderItemDetailDraft[]
+): DetailValueDraft => {
+  if (!details?.length) return field.input_type === 'multi_select' ? [] : '';
+  const matches = details.filter(
+    (detail) => detail.field_id === field.id || detail.field_key === field.field_key
+  );
+  if (field.input_type === 'multi_select') {
+    return matches.map((detail) => detail.value).filter(Boolean);
+  }
+  return matches[0]?.value ?? '';
+};
+
 const statusClass = (status: OrderStatus) => {
   switch (status) {
     case 'pending':
@@ -276,6 +522,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus>(storedState.status);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(storedState.search);
@@ -429,10 +676,10 @@ export default function OrdersPage() {
   }, [pushToast, withAuthRetry]);
 
   const loadOrders = useCallback(
-    async (opts?: { keepSelection?: boolean }) => {
+    async (opts?: { keepSelection?: boolean; selectionId?: string }) => {
       setLoading(true);
       setError(null);
-      const { data, error: fetchError } = await withAuthRetry(
+      const result = await withAuthRetry(
         () =>
           supabase
             .from('orders')
@@ -441,6 +688,22 @@ export default function OrdersPage() {
             .order('created_at', { ascending: false }),
         { label: 'load-orders' }
       );
+      let data = result.data as unknown;
+      let fetchError = result.error;
+
+      if (shouldFallbackOrderSelect(fetchError)) {
+        const fallback = await withAuthRetry(
+          () =>
+            supabase
+              .from('orders')
+              .select(ORDER_SELECT_BASE_WITH_ITEMS)
+              .eq('status', statusFilter)
+              .order('created_at', { ascending: false }),
+          { label: 'load-orders-fallback' }
+        );
+        data = fallback.data as unknown;
+        fetchError = fallback.error;
+      }
 
       if (fetchError) {
         if (import.meta.env.DEV) {
@@ -464,8 +727,9 @@ export default function OrdersPage() {
         notifyMetricsRefresh();
       }
 
-      if (opts?.keepSelection && selectedOrder) {
-        const refreshed = rows.find((o) => o.id === selectedOrder.id);
+      const selectionId = opts?.selectionId ?? (opts?.keepSelection ? selectedOrder?.id : null);
+      if (selectionId) {
+        const refreshed = rows.find((o) => o.id === selectionId);
         if (refreshed) setSelectedOrder(refreshed);
       }
     },
@@ -486,167 +750,328 @@ export default function OrdersPage() {
     return orders.filter((order) => {
       const name = order.customer_name?.toLowerCase() ?? '';
       const phone = order.customer_phone?.toLowerCase() ?? '';
+      const address = formatOrderAddress(order).toLowerCase();
       const id = order.id.toLowerCase();
-      return name.includes(term) || phone.includes(term) || id.includes(term);
+      return name.includes(term) || phone.includes(term) || address.includes(term) || id.includes(term);
     });
   }, [orders, search]);
 
   const hasOrders = filteredOrders.length > 0;
 
+  const handleCreatedOrder = useCallback(
+    (order: Order) => {
+      setCreateModalOpen(false);
+      setSelectedOrder(order);
+      void loadOrders({ keepSelection: true, selectionId: order.id });
+      pushToast('Pedido criado com sucesso.', { variant: 'success', durationMs: 5000 });
+    },
+    [loadOrders, pushToast]
+  );
+
   return (
-    <div className="admin-page">
-      {toasts.length > 0 && (
-        <div className="admin-toast-stack" role="region" aria-live="polite">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`admin-toast admin-toast-${toast.variant ?? 'info'}`}
-              role={toast.variant === 'error' ? 'alert' : 'status'}
-            >
-              <span>{toast.message}</span>
+    <div className="admin-page admin-orders-page">
+      <AdminToastStack toasts={toasts} onDismiss={removeToast} />
+      <AdminPageHeader
+        kicker="Operação"
+        title="Pedidos"
+      />
+
+      <div className="admin-orders-create-action">
+        <button
+          type="button"
+          className="admin-button admin-orders-create-button"
+          onClick={() => setCreateModalOpen(true)}
+        >
+          Adicionar Pedido
+        </button>
+      </div>
+
+      <div className="admin-orders-mobile-only">
+        <div className="admin-table-shell admin-orders-table-shell admin-orders-mobile-shell">
+          <div className="admin-table-headerbar admin-orders-filter-bar admin-orders-mobile-filter-bar">
+            <div className="admin-orders-filter-heading">
+              <p className="admin-section-kicker">Filtro</p>
+              <h3 className="admin-table-title">Selecione um status</h3>
+            </div>
+            <div className="admin-section-actions admin-orders-filter-controls">
+              <label className="admin-field admin-orders-mobile-status-field">
+                <span>Status do pedido</span>
+                <select
+                  className="admin-select"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as OrderStatus)}
+                >
+                  {STATUS_TABS.map((tab) => {
+                    const count = statusCounts[tab.value] ?? 0;
+                    return (
+                      <option key={tab.value} value={tab.value}>
+                        {tab.label} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <label className="admin-field admin-orders-mobile-search-field">
+                <span>Campo de busca</span>
+                <div className="admin-input-inline admin-orders-search admin-orders-search-mobile">
+                  <FaSearch />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="admin-input"
+                    placeholder="Buscar por nome, telefone ou ID"
+                  />
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 p-2" role="list" aria-label="Lista de pedidos">
+
+            {loading &&
+              Array.from({ length: 4 }, (_, index) => (
+                <article
+                  key={`mobile-order-skeleton-${index}`}
+                  className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-pulse"
+                  aria-hidden="true"
+                >
+                  <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
+                  <div className="h-5 w-20 bg-gray-200 rounded-full mb-3" />
+                  <div className="h-4 w-full bg-gray-200 rounded mb-2" />
+                  <div className="h-4 w-32 bg-gray-200 rounded mb-3" />
+                  <div className="h-10 w-full bg-gray-200 rounded-full" />
+                </article>
+              ))}
+
+            {!loading &&
+              hasOrders &&
+              filteredOrders.map((order) => (
+                <article
+                  key={order.id}
+                  role="listitem"
+                  className="bg-white rounded-2xl p-4 shadow-sm border border-pink-600 flex flex-col gap-3"
+                >
+                  {/* HEADER */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <strong className="text-sm font-semibold text-black">
+                        #{formatShortId(order.id)}
+                      </strong>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyId(order.id)}
+                        className="text-pink-600 hover:bg-pink-600 hover:text-white transition border rounded-full border-pink-600 p-1"
+                      >
+                        <FaRegCopy className="text-sm" />
+                      </button>
+                    </div>
+
+                    <span className={`${statusClass(order.status)} text-xs px-2 py-1 rounded-full`}>
+                      {STATUS_TABS.find((status) => status.value === order.status)?.label}
+                    </span>
+                  </div>
+
+                  {/* CLIENTE */}
+                  <h4 className="text-sm text-gray-700">
+                    <span className="text-gray-500">Cliente:</span>{" "}
+                    {order.customer_name ?? "Sem nome"}
+                  </h4>
+                  <p className="text-xs leading-relaxed text-gray-500">
+                    <span className="text-gray-500">Endereço:</span>{" "}
+                    {formatOrderAddress(order)}
+                  </p>
+
+                  {/* META */}
+                  <p className="text-xs text-gray-500">
+                    Pedido: {formatDate(order.created_at)} • Entrega:{" "}
+                    {formatDate(order.delivery_date)}
+                  </p>
+
+                  {/* FOOTER */}
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-lg font-semibold text-pink-500">
+                      {formatCurrency(order.total_cents)}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrder(order)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-full border border-pink-300 text-pink-500 text-xs font-medium hover:bg-pink-50 hover:border-pink-400 active:scale-95 transition-all"
+                    >
+                      Ver detalhes
+                      <BiSolidDetail className="text-sm" />
+                    </button>
+                  </div>
+                </article>
+              ))}
+
+            {!loading && !hasOrders && (
+              <div className="text-center py-10 text-gray-500">
+                <p className="font-medium text-gray-700">Nenhum pedido encontrado</p>
+                <p className="text-sm">Ajuste filtros, status ou faça nova busca.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="admin-table-footer admin-orders-mobile-footer">
+            <span>
+              {loading ? 'Carregando...' : hasOrders ? `${filteredOrders.length} pedido(s)` : 'Nenhum pedido listado'}
+            </span>
+            <div className="admin-table-actions">
               <button
                 type="button"
-                className="admin-toast-close"
-                onClick={() => removeToast(toast.id)}
-                aria-label="Fechar notificação"
+                className="rounded-2xl bg-pink-600 text-white p-2 text-xs"
+                onClick={() => loadOrders({ keepSelection: true })}
               >
-                ×
+                Atualizar
               </button>
             </div>
-          ))}
-        </div>
-      )}
-      <div className="admin-page-header">
-        <div>
-          <p className="admin-page-kicker">Operação</p>
-          <h1 className="admin-page-title">Pedidos</h1>
-          <p className="admin-page-subtitle">Acompanhe pedidos por status e avance o fluxo.</p>
+          </div>
         </div>
       </div>
 
-      <div className="admin-table-shell">
-        <div className="admin-table-headerbar" style={{ gap: 18, flexWrap: 'wrap' }}>
-          <div>
-            <p className="admin-section-kicker">Filtrar</p>
-            <h3 className="admin-table-title">Pedidos por status</h3>
-            <p className="admin-table-subtitle">
-              Pendentes, em andamento, concluídos, reprovados ou cancelados.
-            </p>
-            <p className="admin-helper-text">Contadores consideram todos os pedidos, mesmo com busca.</p>
-          </div>
-          <div className="admin-section-actions" style={{ flexWrap: 'wrap' }}>
-            <div className="admin-table-actions" style={{ gap: 6 }}>
-              {STATUS_TABS.map((tab) => {
-                const count = statusCounts[tab.value] ?? 0;
-                return (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    className={`admin-button-small admin-status-tab ${
-                      statusFilter === tab.value ? '' : 'admin-button-ghost'
-                    }`}
-                    onClick={() => setStatusFilter(tab.value)}
-                    aria-pressed={statusFilter === tab.value}
-                  >
-                    <span>{tab.label}</span>
-                    <span className="admin-status-count">({count})</span>
-                  </button>
-                );
-              })}
+      <div className="admin-orders-desktop-only">
+        <section className="admin-table-shell admin-orders-table-shell admin-orders-desktop-panel">
+          <div className="admin-table-headerbar admin-orders-filter-bar">
+            <div className="admin-orders-filter-heading">
+              <p className="admin-section-kicker">Filtro</p>
+              <h3 className="admin-table-title">Selecione um status</h3>
+              <p className="admin-table-subtitle">
+                {loading ? 'Carregando pedidos...' : hasOrders ? `${filteredOrders.length} pedido(s) na selecao.` : 'Nenhum pedido listado.'}
+              </p>
             </div>
-            <div className="admin-input-inline" style={{ minWidth: 240 }}>
-              <FaSearch />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="admin-input"
-                placeholder="Buscar por nome, telefone ou ID"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="admin-table-scroll">
-          <div className="admin-table">
-            <div className="admin-table-header admin-table-header-generic">
-              <div>ID</div>
-              <div className="admin-cell-left">Cliente</div>
-              <div>Status</div>
-              <div>Data</div>
-              <div className="admin-col-number">Total</div>
-              <div className="admin-col-actions">Ações</div>
-            </div>
-
-            {loading && (
-              <div className="admin-table-row admin-table-row-generic admin-row-skeleton">
-                <div className="admin-skeleton-line" />
-                <div className="admin-skeleton-line" />
-                <div className="admin-skeleton-pill" />
-                <div className="admin-skeleton-line short" />
-                <div className="admin-skeleton-line short" />
-                <div className="admin-table-actions">
-                  <div className="admin-skeleton-button" />
-                </div>
-              </div>
-            )}
-
-            {!loading && hasOrders ? (
-              filteredOrders.map((order) => (
-                <div key={order.id} className="admin-table-row admin-table-row-generic">
-                  <div className="admin-cell-strong admin-id-cell" title={order.id}>
-                    <span className="admin-id-text">{formatShortId(order.id)}</span>
+            <div className="admin-section-actions admin-orders-filter-controls">
+              <div className="admin-orders-status-grid">
+                {STATUS_TABS.map((tab) => {
+                  const count = statusCounts[tab.value] ?? 0;
+                  return (
                     <button
+                      key={tab.value}
                       type="button"
-                      className="admin-copy-button"
-                      onClick={() => handleCopyId(order.id)}
-                      aria-label="Copiar ID completo"
-                      title="Copiar ID completo"
+                      className={`admin-button-small admin-status-tab admin-orders-status-tab ${statusFilter === tab.value ? 'is-active' : 'admin-button-ghost'
+                        }`}
+                      onClick={() => setStatusFilter(tab.value)}
+                      aria-pressed={statusFilter === tab.value}
                     >
-                      <FaRegCopy aria-hidden="true" focusable="false" />
+                      <span className="admin-orders-status-label">{tab.label}</span>
+                      <span className="admin-status-count admin-orders-status-count">{count}</span>
                     </button>
+                  );
+                })}
+              </div>
+              <div className="admin-input-inline admin-orders-search">
+                <FaSearch />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="admin-input"
+                  placeholder="Buscar por nome, telefone ou ID"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-orders-desktop-grid" role="list" aria-label="Lista de pedidos">
+            {loading &&
+              Array.from({ length: 6 }, (_, index) => (
+                <article key={`desktop-order-skeleton-${index}`} className="admin-orders-desktop-card admin-row-skeleton" aria-hidden="true">
+                  <div className="admin-orders-desktop-card-head">
+                    <div className="admin-skeleton-line short" />
+                    <div className="admin-skeleton-pill" />
                   </div>
-                  <div className="admin-cell-text admin-cell-left" title={order.customer_name ?? 'Sem nome'}>
-                    {order.customer_name ?? 'Sem nome'}
+                  <div className="admin-skeleton-line" />
+                  <div className="admin-skeleton-line short" />
+                  <div className="admin-orders-desktop-card-meta">
+                    <div className="admin-skeleton-block" />
+                    <div className="admin-skeleton-block" />
                   </div>
-                  <div>
-                    <span className={statusClass(order.status)}>{STATUS_TABS.find((s) => s.value === order.status)?.label}</span>
+                  <div className="admin-orders-desktop-card-footer">
+                    <div className="admin-skeleton-line short" />
+                    <div className="admin-skeleton-button" />
                   </div>
-                  <div>{formatDate(order.created_at)}</div>
-                  <div className="admin-col-number">{formatCurrency(order.total_cents)}</div>
-                  <div className="admin-table-actions">
+                </article>
+              ))}
+
+            {!loading &&
+              hasOrders &&
+              filteredOrders.map((order) => (
+                <article key={order.id} className="admin-orders-desktop-card" role="listitem">
+                  <div className="admin-orders-desktop-card-head">
+                    <div className="admin-id-cell" title={order.id}>
+                      <span className="admin-orders-desktop-id">#{formatShortId(order.id)}</span>
+                      <button
+                        type="button"
+                        className="admin-copy-button"
+                        onClick={() => handleCopyId(order.id)}
+                        aria-label="Copiar ID completo"
+                        title="Copiar ID completo"
+                      >
+                        <FaRegCopy aria-hidden="true" focusable="false" />
+                      </button>
+                    </div>
+                    <span className={statusClass(order.status)}>
+                      {STATUS_TABS.find((s) => s.value === order.status)?.label}
+                    </span>
+                  </div>
+
+                  <div className="admin-orders-desktop-card-copy">
+                    <span>Cliente</span>
+                    <h3 title={order.customer_name ?? 'Sem nome'}>{order.customer_name ?? 'Sem nome'}</h3>
+                    <p title={order.customer_phone ?? EMPTY_LABEL}>{order.customer_phone ?? EMPTY_LABEL}</p>
+                    <p title={formatOrderAddress(order)}>{formatOrderAddress(order)}</p>
+                  </div>
+
+                  <div className="admin-orders-desktop-card-meta">
+                    <div>
+                      <span>Pedido</span>
+                      <strong>{formatDate(order.created_at)}</strong>
+                    </div>
+                    <div>
+                      <span>Entrega</span>
+                      <strong>{formatDate(order.delivery_date)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="admin-orders-desktop-card-footer">
+                    <span className="admin-orders-desktop-total">{formatCurrency(order.total_cents)}</span>
                     <button
                       type="button"
-                      className="admin-button-small admin-button-ghost"
+                      className="admin-button-small admin-button-ghost admin-orders-desktop-detail"
                       onClick={() => setSelectedOrder(order)}
                     >
-                      Detalhes
+                      Ver detalhes
+                      <BiSolidDetail aria-hidden="true" focusable="false" />
                     </button>
                   </div>
-                </div>
-              ))
-            ) : (
-              !loading && (
-                <div className="admin-empty-row">
-                  <div>
-                    <p className="admin-empty-title">Nenhum pedido encontrado</p>
-                    <p className="admin-empty-helper">Ajuste filtros, status ou faça nova busca.</p>
-                  </div>
-                </div>
-              )
+                </article>
+              ))}
+
+            {!loading && !hasOrders && (
+              <div className="admin-orders-desktop-empty">
+                <p className="admin-empty-title">Nenhum pedido encontrado</p>
+                <p className="admin-empty-helper">Ajuste filtros, status ou faça nova busca.</p>
+              </div>
             )}
           </div>
-        </div>
-        <div className="admin-table-footer">
-          <span>
-            {loading ? 'Carregando...' : hasOrders ? `${filteredOrders.length} pedido(s)` : 'Nenhum pedido listado'}
-          </span>
-          <div className="admin-table-actions">
-            <button type="button" className="admin-button-ghost admin-button-small" onClick={() => loadOrders({ keepSelection: true })}>
-              Atualizar
-            </button>
+
+          <div className="admin-table-footer admin-orders-desktop-footer">
+            <span>
+              {loading ? 'Carregando...' : hasOrders ? `${filteredOrders.length} pedido(s)` : 'Nenhum pedido listado'}
+            </span>
+            <div className="admin-table-actions">
+              <button
+                type="button"
+                className="admin-button-ghost admin-button-small"
+                onClick={() => loadOrders({ keepSelection: true })}
+              >
+                Atualizar
+              </button>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
 
       {selectedOrder && (
@@ -655,6 +1080,14 @@ export default function OrdersPage() {
           onClose={() => setSelectedOrder(null)}
           onUpdated={() => loadOrders({ keepSelection: true })}
           setSelectedOrder={setSelectedOrder}
+          onToast={pushToast}
+        />
+      )}
+
+      {createModalOpen && (
+        <CreateOrderModal
+          onClose={() => setCreateModalOpen(false)}
+          onCreated={handleCreatedOrder}
           onToast={pushToast}
         />
       )}
@@ -672,6 +1105,1078 @@ type OrderDetailModalProps = {
   onToast: (message: string, options?: { variant?: ToastVariant; durationMs?: number }) => void;
 };
 
+type CreateOrderModalProps = {
+  onClose: () => void;
+  onCreated: (order: Order) => void;
+  onToast: (message: string, options?: { variant?: ToastVariant; durationMs?: number }) => void;
+};
+
+type CreateOrderItemEditorMode = 'create' | 'edit';
+
+type ItemEditorState = {
+  mode: CreateOrderItemEditorMode;
+  targetId?: string;
+};
+
+type CreateOrderItemEditorModalProps = {
+  mode: CreateOrderItemEditorMode;
+  products: CreateOrderProduct[];
+  initialItem?: CreateOrderItemDraft;
+  loadDetailFields: (productId: string) => Promise<ProductDetailField[]>;
+  onClose: () => void;
+  onSave: (item: CreateOrderItemDraft) => void;
+  onDelete?: () => void;
+};
+
+function CreateOrderModal({ onClose, onCreated, onToast }: CreateOrderModalProps) {
+  const { withAuthRetry } = useAuth();
+  const detailFieldsCacheRef = useRef<Record<string, ProductDetailField[]>>({});
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [note, setNote] = useState('');
+  const [status, setStatus] = useState<CreateOrderStatus>('pending');
+  const [items, setItems] = useState<CreateOrderItemDraft[]>([]);
+  const [products, setProducts] = useState<CreateOrderProduct[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
+
+  const productById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+
+  const totalCents = useMemo(
+    () => items.reduce((acc, item) => acc + (Number(item.subtotal_cents) || 0), 0),
+    [items]
+  );
+
+  useEffect(() => {
+    let ignore = false;
+    const loadCatalog = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        const { data: productRows, error: productError } = await withAuthRetry(
+          () =>
+            supabase
+              .from('products')
+              .select('id, name, base_price_cents, min_quantity')
+              .eq('is_active', true)
+              .order('name', { ascending: true }),
+          { label: 'create-order-load-products' }
+        );
+        if (productError) throw productError;
+        if (ignore) return;
+        setProducts((productRows ?? []) as CreateOrderProduct[]);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Não foi possível carregar produtos.';
+        if (!ignore) setCatalogError(message);
+      } finally {
+        if (!ignore) setCatalogLoading(false);
+      }
+    };
+
+    void loadCatalog();
+    return () => {
+      ignore = true;
+    };
+  }, [withAuthRetry]);
+
+  const loadDetailFieldsForProduct = useCallback(async (productId: string) => {
+    const cached = detailFieldsCacheRef.current[productId];
+    if (cached) return cached;
+    const fields = await fetchProductDetailFields(productId, { onlyActive: true, withOptions: true });
+    const normalized = fields.map((field) => ({
+      ...field,
+      options: [...(field.options ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    }));
+    detailFieldsCacheRef.current[productId] = normalized;
+    return normalized;
+  }, []);
+
+  const handleOpenCreateItem = () => {
+    setItemEditor({ mode: 'create' });
+  };
+
+  const handleOpenEditItem = (itemId: string) => {
+    setItemEditor({ mode: 'edit', targetId: itemId });
+  };
+
+  const handleSaveItem = (nextItem: CreateOrderItemDraft) => {
+    setItems((prev) => {
+      const index = prev.findIndex((item) => item.client_id === nextItem.client_id);
+      if (index === -1) return [...prev, nextItem];
+      return prev.map((item) => (item.client_id === nextItem.client_id ? nextItem : item));
+    });
+    setItemEditor(null);
+  };
+
+  const handleDeleteEditingItem = () => {
+    if (!itemEditor?.targetId) return;
+    setItems((prev) => prev.filter((item) => item.client_id !== itemEditor.targetId));
+    setItemEditor(null);
+  };
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+
+    const name = customerName.trim();
+    const phone = customerPhone.trim();
+    const email = customerEmail.trim();
+    const event = eventDate.trim();
+    const delivery = deliveryDate.trim();
+    const observation = note.trim();
+
+    if (!name) {
+      setError('Informe o nome do cliente.');
+      setSaving(false);
+      return;
+    }
+    if (!phone) {
+      setError('Informe o telefone do cliente.');
+      setSaving(false);
+      return;
+    }
+    if (status === 'in_progress' && !delivery) {
+      setError('Para iniciar em andamento, informe a data de entrega.');
+      setSaving(false);
+      return;
+    }
+    if (!items.length) {
+      setError('Adicione ao menos um item.');
+      setSaving(false);
+      return;
+    }
+
+    const normalizedItems = items.map((item) => {
+      const quantity = Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
+      const unitPrice = Number.isFinite(item.unit_price_cents) ? Math.max(0, item.unit_price_cents) : 0;
+      const details = (item.details ?? [])
+        .filter((detail) => detail.field_id && detail.value?.trim())
+        .map((detail) => ({
+          field_id: detail.field_id,
+          value: detail.value.trim(),
+        }));
+      return {
+        product_id: item.product_id.trim(),
+        quantity,
+        unit_price_cents: unitPrice,
+        subtotal_cents: quantity * unitPrice,
+        details,
+      };
+    });
+
+    const hasInvalidItem =
+      normalizedItems.length === 0 ||
+      normalizedItems.some((item) => !item.product_id || item.quantity < 1);
+    if (hasInvalidItem) {
+      setError('Todos os itens devem ter produto e quantidade válida.');
+      setSaving(false);
+      return;
+    }
+
+    const totalCentsPayload = normalizedItems.reduce((acc, item) => acc + item.subtotal_cents, 0);
+    let createdOrderId: string | null = null;
+    let createdOrderItemIds: string[] = [];
+    let shouldRollback = false;
+
+    try {
+      const orderPayload = {
+        customer_name: name,
+        customer_phone: phone,
+        customer_email: email || null,
+        note: observation || null,
+        event_date: event || null,
+        delivery_date: status === 'in_progress' ? delivery || null : null,
+        status,
+        total_cents: totalCentsPayload,
+        payment_method: null,
+        payment_status: status === 'in_progress' ? 'due' : null,
+        payment_due: status === 'in_progress' ? true : null,
+      };
+
+      const { data: insertedOrder, error: orderError } = await withAuthRetry(
+        () => supabase.from('orders').insert(orderPayload).select('id').single(),
+        { label: 'create-order' }
+      );
+      if (orderError || !insertedOrder) {
+        throw new Error(extractSupabaseErrorMessage(orderError, 'Não foi possível criar o pedido.'));
+      }
+      createdOrderId = insertedOrder.id as string;
+      shouldRollback = true;
+
+      const itemsPayload = normalizedItems.map((item) => ({
+        order_id: createdOrderId,
+        product_id: item.product_id,
+        product_option_id: null,
+        quantity: item.quantity,
+        unit_price_cents: item.unit_price_cents,
+        subtotal_cents: item.subtotal_cents,
+        flavor: null,
+        coverage: null,
+        size: null,
+        ribbon_width: null,
+        ribbon_color: null,
+        form_color: null,
+      }));
+
+      const { error: itemsError } = await withAuthRetry(
+        () => supabase.from('order_items').insert(itemsPayload),
+        { label: 'create-order-items' }
+      );
+      if (itemsError) {
+        throw new Error(
+          extractSupabaseErrorMessage(itemsError, 'Não foi possível salvar os itens do pedido.')
+        );
+      }
+
+      const hasItemDetails = normalizedItems.some((item) => item.details.length > 0);
+      const detailRows: Array<{ order_item_id: string; field_id: string; value: string }> = [];
+      if (hasItemDetails) {
+        const { data: orderItemsRows, error: lookupError } = await withAuthRetry(
+          () =>
+            supabase
+              .from('order_items')
+              .select('id, product_id, quantity, unit_price_cents, subtotal_cents')
+              .eq('order_id', createdOrderId as string),
+          { label: 'create-order-items-lookup' }
+        );
+
+        if (lookupError) {
+          throw new Error(
+            extractSupabaseErrorMessage(
+              lookupError,
+              'Não foi possível localizar os itens criados para vincular as customizações.'
+            )
+          );
+        }
+
+        const candidates = ((orderItemsRows ?? []) as Array<{
+          id: string;
+          product_id: string | null;
+          quantity: number;
+          unit_price_cents: number;
+          subtotal_cents: number;
+        }>).slice();
+        const usedIds = new Set<string>();
+
+        const findItemId = (item: {
+          product_id: string;
+          quantity: number;
+          unit_price_cents: number;
+          subtotal_cents: number;
+        }) => {
+          const match = candidates.find(
+            (row) =>
+              !usedIds.has(row.id) &&
+              row.product_id === item.product_id &&
+              Number(row.quantity) === Number(item.quantity) &&
+              Number(row.unit_price_cents) === Number(item.unit_price_cents) &&
+              Number(row.subtotal_cents) === Number(item.subtotal_cents)
+          );
+          if (!match) return null;
+          usedIds.add(match.id);
+          return match.id;
+        };
+
+        normalizedItems.forEach((item) => {
+          if (!item.details.length) return;
+          const itemId = findItemId(item);
+          if (!itemId) {
+            throw new Error('Não foi possível associar as customizações aos itens do pedido.');
+          }
+          item.details.forEach((detail) => {
+            detailRows.push({
+              order_item_id: itemId,
+              field_id: detail.field_id,
+              value: detail.value,
+            });
+          });
+        });
+      }
+
+      if (detailRows.length > 0) {
+        const { error: detailError } = await withAuthRetry(
+          () => supabase.from('order_item_details').insert(detailRows),
+          { label: 'create-order-item-details' }
+        );
+        if (detailError) {
+          throw new Error(
+            extractSupabaseErrorMessage(
+              detailError,
+              'Não foi possível salvar as customizações dos itens.'
+            )
+          );
+        }
+      }
+
+      shouldRollback = false;
+
+      const { data: fullOrder, error: fullOrderError } = await withAuthRetry(
+        () =>
+          supabase
+            .from('orders')
+            .select(ORDER_SELECT_BASE_WITH_ITEMS)
+            .eq('id', createdOrderId as string)
+            .single(),
+        { label: 'create-order-fetch' }
+      );
+      if (fullOrderError || !fullOrder) {
+        throw new Error(
+          extractSupabaseErrorMessage(
+            fullOrderError,
+            'Pedido criado, mas não foi possível carregar os detalhes.'
+          )
+        );
+      }
+
+      onCreated(fullOrder as Order);
+    } catch (err) {
+      if (shouldRollback && createdOrderId) {
+        let rollbackItemIds = [...createdOrderItemIds];
+        if (rollbackItemIds.length === 0) {
+          const { data: rollbackRows, error: rollbackLookupError } = await withAuthRetry(
+            () => supabase.from('order_items').select('id').eq('order_id', createdOrderId as string),
+            { label: 'create-order-rollback-items-lookup' }
+          );
+          if (!rollbackLookupError) {
+            rollbackItemIds = ((rollbackRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+          }
+        }
+
+        if (rollbackItemIds.length > 0) {
+          const { error: detailRollbackError } = await withAuthRetry(
+            () => supabase.from('order_item_details').delete().in('order_item_id', rollbackItemIds),
+            { label: 'create-order-details-rollback' }
+          );
+          if (detailRollbackError && import.meta.env.DEV) {
+            console.error('Erro ao reverter customizações dos itens', {
+              message: detailRollbackError.message,
+              details: (detailRollbackError as any)?.details,
+              hint: (detailRollbackError as any)?.hint,
+              code: (detailRollbackError as any)?.code,
+            });
+          }
+        }
+
+        const { error: itemsRollbackError } = await withAuthRetry(
+          () => supabase.from('order_items').delete().eq('order_id', createdOrderId as string),
+          { label: 'create-order-items-rollback' }
+        );
+        if (itemsRollbackError && import.meta.env.DEV) {
+          console.error('Erro ao reverter itens do pedido', {
+            message: itemsRollbackError.message,
+            details: (itemsRollbackError as any)?.details,
+            hint: (itemsRollbackError as any)?.hint,
+            code: (itemsRollbackError as any)?.code,
+          });
+        }
+
+        const { error: orderRollbackError } = await withAuthRetry(
+          () => supabase.from('orders').delete().eq('id', createdOrderId as string),
+          { label: 'create-order-rollback' }
+        );
+        if (orderRollbackError && import.meta.env.DEV) {
+          console.error('Erro ao reverter pedido', {
+            message: orderRollbackError.message,
+            details: (orderRollbackError as any)?.details,
+            hint: (orderRollbackError as any)?.hint,
+            code: (orderRollbackError as any)?.code,
+          });
+        }
+      }
+
+      if (import.meta.env.DEV) {
+        console.error('Erro ao criar pedido no admin', err);
+      }
+
+      const message = extractSupabaseErrorMessage(err, 'Não foi possível criar o pedido agora.');
+      setError(message);
+      onToast(message, { variant: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const editingItem =
+    itemEditor?.mode === 'edit'
+      ? items.find((item) => item.client_id === itemEditor.targetId)
+      : undefined;
+
+  return (
+    <div className="admin-modal-backdrop admin-modal-backdrop-full admin-order-create-backdrop" onClick={() => !saving && onClose()}>
+      <div className="admin-modal admin-order-create-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-header admin-order-create-header">
+          <div className="admin-order-create-header-copy">
+            <div className="admin-order-create-header-topline">
+              <span className="admin-order-create-header-spacer" aria-hidden="true" />
+              <p className="admin-modal-subtitle">Pedido manual</p>
+              <button
+                type="button"
+                className="admin-modal-close-icon"
+                onClick={onClose}
+                disabled={saving}
+                aria-label="Fechar modal"
+              >
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
+            <h2 className="admin-modal-title">Adicionar Pedido</h2>
+          </div>
+        </div>
+
+        <div className="admin-modal-body admin-order-create-body">
+          <section className="admin-section">
+            <div className="admin-section-header admin-orders-section-header">
+              <div className="admin-orders-centered-heading">
+                <p className="admin-section-kicker">Cliente</p>
+                <h3 className="admin-section-title">Dados principais</h3>
+              </div>
+            </div>
+
+            <div className="admin-form-grid">
+              <label className="admin-field">
+                <span>Nome *</span>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nome do cliente"
+                />
+              </label>
+              <label className="admin-field">
+                <span>Telefone *</span>
+                <input
+                  type="text"
+                  className="admin-input"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="(00) 00000-0000"
+                />
+              </label>
+              <label className="admin-field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  className="admin-input"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  placeholder="cliente@email.com"
+                />
+              </label>
+              <label className="admin-field">
+                <span>Data do evento</span>
+                <input
+                  type="date"
+                  className="admin-input"
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
+                />
+              </label>
+              <label className="admin-field">
+                <span>Status inicial *</span>
+                <select
+                  className="admin-select"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as CreateOrderStatus)}
+                >
+                  {CREATE_ORDER_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="admin-field">
+                <span>Data de entrega {status === 'in_progress' ? '*' : ''}</span>
+                <input
+                  type="date"
+                  className="admin-input"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                />
+              </label>
+              <label className="admin-field admin-field-full">
+                <span>Observações</span>
+                <textarea
+                  className="admin-textarea"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Informações adicionais do pedido"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="admin-section">
+            <div className="admin-section-header admin-orders-section-header">
+              <div className="admin-orders-centered-heading">
+                <p className="admin-section-kicker">Itens</p>
+                <h3 className="admin-section-title">Produtos do pedido</h3>
+              </div>
+            </div>
+            <div className="admin-section-actions admin-orders-section-actions-block">
+              <button
+                type="button"
+                className="rounded-full font-sans font-bold bg-pink-500 text-white w-full py-2 mb-2"
+                onClick={handleOpenCreateItem}
+              >
+                + Adicionar item
+              </button>
+            </div>
+
+            {catalogLoading && <p className="admin-card-copy">Carregando produtos...</p>}
+            {catalogError && <div className="admin-inline-error">{catalogError}</div>}
+
+            <div className="admin-order-create-items-grid">
+              {items.length === 0 ? (
+                <div className="admin-order-create-items-empty">
+                  Nenhum item adicionado. Clique em "Adicionar item" para começar.
+                </div>
+              ) : (
+                items.map((item) => (
+                  <article key={item.client_id} className="admin-order-create-item-card">
+                    <div className="admin-order-create-item-card-copy">
+                      <p className="admin-order-create-item-card-title">
+                        {productById.get(item.product_id)?.name ?? 'Produto não selecionado'}
+                      </p>
+                      <p className="admin-order-create-item-card-price">{formatCurrency(item.subtotal_cents)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="admin-order-create-item-card-edit"
+                      onClick={() => handleOpenEditItem(item.client_id)}
+                      aria-label="Editar item"
+                      title="Editar item"
+                    >
+                      <FaEdit aria-hidden="true" focusable="false" />
+                    </button>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+
+          <div className="admin-order-create-total">
+            <span>Total do pedido</span>
+            <strong>{formatCurrency(totalCents)}</strong>
+          </div>
+
+          {error && <div className="admin-inline-error">{error}</div>}
+
+          <button
+            type="button"
+            className="admin-button admin-order-create-submit"
+            onClick={handleSave}
+            disabled={saving || catalogLoading}
+          >
+            {saving ? 'Salvando...' : 'Criar pedido'}
+          </button>
+        </div>
+      </div>
+
+      {itemEditor && (
+        <CreateOrderItemEditorModal
+          mode={itemEditor.mode}
+          products={products}
+          initialItem={editingItem}
+          loadDetailFields={loadDetailFieldsForProduct}
+          onClose={() => setItemEditor(null)}
+          onSave={handleSaveItem}
+          onDelete={itemEditor.mode === 'edit' ? handleDeleteEditingItem : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateOrderItemEditorModal({
+  mode,
+  products,
+  initialItem,
+  loadDetailFields,
+  onClose,
+  onSave,
+  onDelete,
+}: CreateOrderItemEditorModalProps) {
+  const [productId, setProductId] = useState(initialItem?.product_id ?? '');
+  const [quantity, setQuantity] = useState(Math.max(1, initialItem?.quantity ?? 1));
+  const [unitPriceInput, setUnitPriceInput] = useState(initialItem?.unitPriceInput ?? '');
+  const [unitPriceCents, setUnitPriceCents] = useState(initialItem?.unit_price_cents ?? 0);
+  const [manualPrice, setManualPrice] = useState(initialItem?.manualPrice ?? false);
+  const [detailFields, setDetailFields] = useState<ProductDetailField[]>([]);
+  const [detailValues, setDetailValues] = useState<Record<string, DetailValueDraft>>({});
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const [optionFilters, setOptionFilters] = useState<Record<string, string>>({});
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === productId),
+    [products, productId]
+  );
+
+  const detailSelections = useMemo(
+    () => buildDetailSelections(detailFields, detailValues),
+    [detailFields, detailValues]
+  );
+
+  const detailExtraPriceCents = useMemo(
+    () =>
+      detailSelections.reduce(
+        (acc, selection) =>
+          acc + (Number.isFinite(selection.extraPriceDeltaCents) ? selection.extraPriceDeltaCents : 0),
+        0
+      ),
+    [detailSelections]
+  );
+
+  const subtotalCents = useMemo(
+    () => Math.max(1, quantity) * Math.max(0, unitPriceCents),
+    [quantity, unitPriceCents]
+  );
+
+  useEffect(() => {
+    let ignore = false;
+    const load = async () => {
+      if (!productId) {
+        setDetailFields([]);
+        setDetailValues({});
+        setDetailErrors({});
+        return;
+      }
+
+      setLoadingDetails(true);
+      setDetailsError(null);
+      try {
+        const fields = await loadDetailFields(productId);
+        if (ignore) return;
+        setDetailFields(fields);
+        setDetailValues(() => {
+          const nextValues: Record<string, DetailValueDraft> = {};
+          fields.forEach((field) => {
+            const key = field.id ?? field.field_key;
+            const initialValue =
+              initialItem && initialItem.product_id === productId
+                ? getInitialDetailValueFromItem(field, initialItem.details)
+                : undefined;
+            nextValues[key] = normalizeDetailValueForField(field, initialValue);
+          });
+          return nextValues;
+        });
+        setDetailErrors({});
+        setOptionFilters({});
+      } catch (err) {
+        if (ignore) return;
+        const message = err instanceof Error ? err.message : 'Não foi possível carregar as customizações.';
+        setDetailsError(message);
+      } finally {
+        if (!ignore) setLoadingDetails(false);
+      }
+    };
+
+    void load();
+    return () => {
+      ignore = true;
+    };
+  }, [initialItem, loadDetailFields, productId]);
+
+  useEffect(() => {
+    if (!productId || manualPrice) return;
+    let ignore = false;
+    const syncAutoPrice = async () => {
+      let basePriceCents: number | null = null;
+      try {
+        const resolved = await resolveUnitPriceCents(productId, Math.max(1, quantity));
+        if (typeof resolved === 'number' && Number.isFinite(resolved)) {
+          basePriceCents = Math.max(0, Math.round(resolved));
+        }
+      } catch {
+        basePriceCents = null;
+      }
+
+      if (basePriceCents === null) {
+        const fallback = Number(selectedProduct?.base_price_cents);
+        basePriceCents = Number.isFinite(fallback) ? Math.max(0, fallback) : 0;
+      }
+
+      const nextUnitPrice = Math.max(0, basePriceCents + detailExtraPriceCents);
+      if (ignore) return;
+      setUnitPriceCents(nextUnitPrice);
+      setUnitPriceInput(centsToInput(nextUnitPrice));
+    };
+
+    void syncAutoPrice();
+    return () => {
+      ignore = true;
+    };
+  }, [detailExtraPriceCents, manualPrice, productId, quantity, selectedProduct?.base_price_cents]);
+
+  const updateDetailValue = (key: string, value: DetailValueDraft) => {
+    setDetailValues((prev) => ({ ...prev, [key]: value }));
+    setDetailErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleChangeProduct = (nextProductId: string) => {
+    setProductId(nextProductId);
+    setManualPrice(false);
+    setError(null);
+    const product = products.find((entry) => entry.id === nextProductId);
+    const minQuantity = Math.max(1, Number(product?.min_quantity) || 1);
+    setQuantity(minQuantity);
+    if (!nextProductId) {
+      setUnitPriceCents(0);
+      setUnitPriceInput('');
+    }
+  };
+
+  const handleChangePrice = (value: string) => {
+    setManualPrice(true);
+    setUnitPriceInput(value);
+    setUnitPriceCents(parseCurrencyInput(value));
+  };
+
+  const handleResetAutoPrice = () => {
+    setManualPrice(false);
+  };
+
+  const validateDetails = () => {
+    const nextErrors: Record<string, string> = {};
+    detailFields.forEach((field) => {
+      const key = field.id ?? field.field_key;
+      if (field.input_type === 'multi_select') {
+        const selectedValues = getDetailSelectedValues(detailValues[key]);
+        if (field.is_required && selectedValues.length === 0) {
+          nextErrors[key] = 'Obrigatório';
+          return;
+        }
+        const validOptions = new Set((field.options ?? []).map((option) => option.value));
+        if (selectedValues.some((value) => !validOptions.has(value))) {
+          nextErrors[key] = 'Selecione opções válidas';
+        }
+        return;
+      }
+
+      const value = getDetailTextValue(detailValues[key]);
+      if (field.is_required && !value) {
+        nextErrors[key] = 'Obrigatório';
+        return;
+      }
+
+      if (field.input_type === 'select' && value) {
+        const optionExists = field.options?.some((option) => option.value === value);
+        if (!optionExists) {
+          nextErrors[key] = 'Selecione uma opção válida';
+        }
+      }
+    });
+
+    setDetailErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSave = () => {
+    setError(null);
+    if (!productId) {
+      setError('Selecione um produto.');
+      return;
+    }
+    if (quantity < 1) {
+      setError('A quantidade mínima é 1.');
+      return;
+    }
+    if (!validateDetails()) {
+      setError('Preencha as customizações obrigatórias.');
+      return;
+    }
+
+    const normalizedSelections = mapSelectionsToDetailDraft(detailSelections);
+    const normalizedUnitPrice = Number.isFinite(unitPriceCents) ? Math.max(0, unitPriceCents) : 0;
+    const normalizedQuantity = Math.max(1, quantity);
+
+    onSave({
+      client_id: initialItem?.client_id ?? createTempId(),
+      product_id: productId,
+      quantity: normalizedQuantity,
+      unit_price_cents: normalizedUnitPrice,
+      unitPriceInput: manualPrice ? unitPriceInput : centsToInput(normalizedUnitPrice),
+      subtotal_cents: normalizedQuantity * normalizedUnitPrice,
+      manualPrice,
+      details: normalizedSelections,
+    });
+  };
+
+  return (
+    <div
+      className="admin-modal-backdrop admin-order-item-editor-backdrop"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+    >
+      <div className="admin-modal admin-order-item-editor-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-header admin-order-item-editor-header">
+          <div className="admin-order-create-header-copy">
+            <div className="admin-order-create-header-topline">
+              <span className="admin-order-create-header-spacer" aria-hidden="true" />
+              <p className="admin-modal-subtitle">{mode === 'create' ? 'Novo item' : 'Editar item'}</p>
+              <button
+                type="button"
+                className="admin-modal-close-icon"
+                onClick={onClose}
+                aria-label="Fechar modal"
+              >
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
+            <h2 className="admin-modal-title">{mode === 'create' ? 'Adicionar item' : 'Editar item'}</h2>
+          </div>
+        </div>
+
+        <div className="admin-modal-body admin-order-item-editor-body">
+          <div className="admin-form-grid">
+            <label className="admin-field">
+              <span>Produto *</span>
+              <select
+                className="admin-select"
+                value={productId}
+                onChange={(event) => handleChangeProduct(event.target.value)}
+              >
+                <option value="">Selecione</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="admin-field">
+              <span>Quantidade *</span>
+              <input
+                type="number"
+                min={1}
+                className="admin-input"
+                value={quantity}
+                onChange={(event) => setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))}
+              />
+            </label>
+
+            <label className="admin-field">
+              <span>Preço unitário (R$)</span>
+              <input
+                type="text"
+                className="admin-input"
+                inputMode="decimal"
+                value={unitPriceInput}
+                onChange={(event) => handleChangePrice(event.target.value)}
+                placeholder="0,00"
+              />
+            </label>
+
+            <div className="admin-field">
+              <span>&nbsp;</span>
+              <button
+                type="button"
+                className="admin-button-ghost admin-button-small"
+                onClick={handleResetAutoPrice}
+                disabled={!productId}
+              >
+                Preço automático
+              </button>
+            </div>
+          </div>
+
+          <div className="admin-order-item-editor-subtotal">
+            Subtotal: <strong>{formatCurrency(subtotalCents)}</strong>
+          </div>
+
+          <section className="admin-section">
+            <div className="admin-section-header admin-orders-section-header">
+              <div className="admin-orders-centered-heading">
+                <p className="admin-section-kicker">Customização</p>
+                <h3 className="admin-section-title">Campos do produto</h3>
+              </div>
+            </div>
+
+            {loadingDetails && <p className="admin-card-copy">Carregando customizações...</p>}
+            {detailsError && <div className="admin-inline-error">{detailsError}</div>}
+
+            {!loadingDetails && !detailsError && (
+              <>
+                {detailFields.length === 0 ? (
+                  <p className="admin-card-copy">Esse produto não possui customizações ativas.</p>
+                ) : (
+                  <div className="admin-order-item-detail-grid">
+                    {detailFields.map((field) => {
+                      const key = field.id ?? field.field_key;
+                      const rawValue = detailValues[key];
+                      const value = Array.isArray(rawValue) ? rawValue[0] ?? '' : rawValue ?? '';
+                      const selectedValues = getDetailSelectedValues(rawValue);
+                      const options = field.options ?? [];
+                      const currentFilter = optionFilters[key] ?? '';
+                      const filteredOptions = options.filter((option) => {
+                        if (!currentFilter.trim()) return true;
+                        const term = currentFilter.toLowerCase();
+                        return (
+                          option.label.toLowerCase().includes(term) ||
+                          option.value.toLowerCase().includes(term)
+                        );
+                      });
+                      const selectedOption =
+                        field.input_type === 'select' && value
+                          ? options.find((option) => option.value === value)
+                          : undefined;
+                      const optionsForSelect =
+                        field.input_type === 'select' &&
+                        selectedOption &&
+                        !filteredOptions.some((option) => option.value === value)
+                          ? [...filteredOptions, selectedOption]
+                          : filteredOptions;
+
+                      return (
+                        <div key={key} className="admin-order-item-detail-card">
+                          <label className="admin-field">
+                            <span>
+                              {field.label}
+                              {field.is_required ? ' *' : ''}
+                            </span>
+
+                            {options.length > 8 && (field.input_type === 'select' || field.input_type === 'multi_select') && (
+                              <input
+                                type="text"
+                                className="admin-input admin-order-item-option-filter"
+                                placeholder="Buscar opção..."
+                                value={currentFilter}
+                                onChange={(event) =>
+                                  setOptionFilters((prev) => ({ ...prev, [key]: event.target.value }))
+                                }
+                              />
+                            )}
+
+                            {field.input_type === 'textarea' ? (
+                              <textarea
+                                className="admin-textarea"
+                                value={value}
+                                onChange={(event) => updateDetailValue(key, event.target.value)}
+                                placeholder="Digite aqui"
+                              />
+                            ) : field.input_type === 'select' ? (
+                              <select
+                                className="admin-select"
+                                value={value}
+                                onChange={(event) => updateDetailValue(key, event.target.value)}
+                              >
+                                <option value="">Selecione</option>
+                                {optionsForSelect.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                    {option.extra_price_delta_cents
+                                      ? ` (+${formatCurrency(option.extra_price_delta_cents)})`
+                                      : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : field.input_type === 'multi_select' ? (
+                              <div className="admin-order-item-multi-options">
+                                {filteredOptions.length === 0 ? (
+                                  <p className="admin-card-copy">Nenhuma opção encontrada.</p>
+                                ) : (
+                                  filteredOptions.map((option) => {
+                                    const checked = selectedValues.includes(option.value);
+                                    return (
+                                      <label key={option.value} className="admin-order-item-multi-option-row">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(event) => {
+                                            const currentValues = getDetailSelectedValues(detailValues[key]);
+                                            const nextValues = event.target.checked
+                                              ? Array.from(new Set([...currentValues, option.value]))
+                                              : currentValues.filter((itemValue) => itemValue !== option.value);
+                                            updateDetailValue(key, nextValues);
+                                          }}
+                                        />
+                                        <span>
+                                          {option.label}
+                                          {option.extra_price_delta_cents
+                                            ? ` (+${formatCurrency(option.extra_price_delta_cents)})`
+                                            : ''}
+                                        </span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                className="admin-input"
+                                value={value}
+                                onChange={(event) => updateDetailValue(key, event.target.value)}
+                                placeholder="Digite aqui"
+                              />
+                            )}
+                          </label>
+
+                          {detailErrors[key] ? (
+                            <p className="admin-inline-error" style={{ margin: 0 }}>
+                              {detailErrors[key]}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          {error && <div className="admin-inline-error">{error}</div>}
+
+          <div className="admin-order-item-editor-actions">
+            {mode === 'edit' && onDelete ? (
+              <button
+                type="button"
+                className="admin-order-item-delete-button"
+                onClick={onDelete}
+              >
+                <FaTrash aria-hidden="true" focusable="false" />
+                Excluir item
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              className="admin-button admin-order-item-save-button"
+              onClick={handleSave}
+            >
+              Salvar item
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderDetailModal({ order, onClose, onUpdated, setSelectedOrder, onToast }: OrderDetailModalProps) {
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -682,24 +2187,24 @@ function OrderDetailModal({ order, onClose, onUpdated, setSelectedOrder, onToast
 
   const renderPayment = () => (
     <div className="admin-section">
-      <div className="admin-section-header">
-        <div>
+      <div className="admin-section-header admin-orders-section-header">
+        <div className="admin-orders-centered-heading">
           <p className="admin-section-kicker">Pagamento</p>
-          <h3 className="admin-section-title">Status financeiro</h3>
+          <h3 className="admin-section-title pb-4">Status financeiro</h3>
         </div>
       </div>
       <div className="admin-card-grid">
-        <div className="admin-card">
+        <div className="admin-card ">
           <p className="admin-card-title">Método</p>
-          <p className="admin-card-copy">{formatPaymentMethod(order.payment_method)}</p>
+          <p className="admin-card-copy text-center pt-2">{formatPaymentMethod(order.payment_method)}</p>
         </div>
         <div className="admin-card">
           <p className="admin-card-title">Status</p>
-          <p className="admin-card-copy">{formatPaymentStatus(order.payment_status)}</p>
+          <p className="admin-card-copy text-center pt-2">{formatPaymentStatus(order.payment_status)}</p>
         </div>
         <div className="admin-card">
           <p className="admin-card-title">Pagamento em aberto?</p>
-          <p className="admin-card-copy">{formatPaymentDue(order.payment_due)}</p>
+          <p className="admin-card-copy text-center pt-2">{formatPaymentDue(order.payment_due)}</p>
         </div>
       </div>
     </div>
@@ -707,74 +2212,131 @@ function OrderDetailModal({ order, onClose, onUpdated, setSelectedOrder, onToast
 
   return (
     <div className="admin-modal-backdrop">
-      <div className="admin-modal" style={{ maxHeight: '90vh' }}>
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Pedido</p>
+      <div className="admin-modal admin-order-detail-modal" style={{ maxHeight: '90vh' }}>
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
-            <p className="admin-modal-helper">Criado em {formatDateTime(order.created_at)}</p>
-          </div>
-          <div className="admin-table-actions">
-            <span className={statusClass(order.status)}>{STATUS_TABS.find((s) => s.value === order.status)?.label}</span>
-            <button type="button" className="admin-button-ghost" onClick={onClose}>
-              Fechar
-            </button>
+            <p className="admin-modal-helper pt-2">Criado em {formatDateTime(order.created_at)}</p>
           </div>
         </div>
 
         <div className="admin-modal-body">
-          <div className="admin-card-grid">
-            <div className="admin-card">
-              <p className="admin-card-title">Cliente</p>
+          <div className="admin-order-modal-status-row">
+            <span className={statusClass(order.status)}>{STATUS_TABS.find((s) => s.value === order.status)?.label}</span>
+          </div>
+
+          <div className="admin-card-grid admin-order-info-grid">
+            <div className="admin-card admin-order-info-card">
+              <p className="admin-card-title admin-order-info-title">
+                <FaUser aria-hidden="true" focusable="false" />
+                <span>Cliente</span>
+              </p>
               <p className="admin-card-copy">{formatOptionalText(order.customer_name)}</p>
               <p className="admin-card-copy">Telefone: {formatOptionalText(order.customer_phone)}</p>
             </div>
-            <div className="admin-card">
-              <p className="admin-card-title">Datas</p>
+            <div className="admin-card admin-order-info-card">
+              <p className="admin-card-title admin-order-info-title">
+                <FaMapMarkerAlt aria-hidden="true" focusable="false" />
+                <span>Endereço</span>
+              </p>
+              <p className="admin-card-copy">{formatOrderAddress(order)}</p>
+            </div>
+            <div className="admin-card admin-order-info-card">
+              <p className="admin-card-title admin-order-info-title">
+                <FaCalendarAlt aria-hidden="true" focusable="false" />
+                <span>Datas</span>
+              </p>
               <p className="admin-card-copy">Entrega: {formatDate(order.delivery_date)}</p>
             </div>
-            <div className="admin-card">
-              <p className="admin-card-title">Observações</p>
+            <div className="admin-card admin-order-info-card">
+              <p className="admin-card-title admin-order-info-title">
+                <FaRegCommentDots aria-hidden="true" focusable="false" />
+                <span>Observações</span>
+              </p>
               <p className="admin-card-copy">{formatOptionalText(order.note)}</p>
             </div>
           </div>
 
           <div className="admin-section">
-            <div className="admin-section-header">
-              <div>
+            <div className="admin-section-header admin-orders-section-header">
+              <div className="admin-orders-centered-heading">
                 <p className="admin-section-kicker">Itens</p>
-                <h3 className="admin-section-title">Produtos do pedido</h3>
-              </div>
-              <div className="admin-section-actions">
-                <p className="admin-card-copy" style={{ margin: 0 }}>
-                  Total: {formatCurrency(order.total_cents)}
-                </p>
+                <h3 className="admin-section-title pb-4">Produtos do pedido</h3>
               </div>
             </div>
-            <div className="admin-table admin-quantity-table">
-              <div className="admin-table-header">
-                <div>Qtd</div>
-                <div>Descrição</div>
-                <div>Preço</div>
-                <div>Subtotal</div>
-              </div>
-              {order.order_items && order.order_items.length > 0 ? (
-                order.order_items.map((item) => (
-                  <div key={item.id ?? `${item.product_id}-${item.product_option_id}`} className="admin-table-row">
-                    <div>{item.quantity}</div>
-                    <div className="admin-cell-left">
-                      {getOrderItemDisplayName(item)}{' '}
-                      <span className="admin-cell-text">{getOrderItemMetaText(item)}</span>
-                    </div>
-                    <div className="admin-col-number">{formatCurrency(item.unit_price_cents)}</div>
-                    <div className="admin-col-number">{formatCurrency(item.subtotal_cents)}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="admin-table-row">
-                  <div className="admin-empty">Sem itens listados.</div>
+            <div className="admin-section-actions admin-orders-section-actions-block">
+              <p className="text-center rounded-full bg-pink-600 text-white font-sans font-bold bold py-4 mb-4">
+                Total: {formatCurrency(order.total_cents)}
+              </p>
+            </div>
+
+            <div className="admin-orders-desktop-only">
+              <div className="admin-table admin-quantity-table">
+                <div className="admin-table-header">
+                  <div>Qtd</div>
+                  <div>Descrição</div>
+                  <div>Preço</div>
+                  <div>Subtotal</div>
                 </div>
-              )}
+                {order.order_items && order.order_items.length > 0 ? (
+                  order.order_items.map((item) => (
+                    <div key={item.id ?? `${item.product_id}-${item.product_option_id}`} className="admin-table-row">
+                      <div>{item.quantity}</div>
+                      <div className="admin-cell-left">
+                        {getOrderItemDisplayName(item)}{' '}
+                        <span className="admin-cell-text">{getOrderItemMetaText(item)}</span>
+                      </div>
+                      <div className="admin-col-number">{formatCurrency(item.unit_price_cents)}</div>
+                      <div className="admin-col-number">{formatCurrency(item.subtotal_cents)}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="admin-table-row">
+                    <div className="admin-empty">Sem itens listados.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="admin-orders-mobile-only">
+              <div className="admin-order-mobile-item-list" role="list" aria-label="Itens do pedido">
+                {order.order_items && order.order_items.length > 0 ? (
+                  order.order_items.map((item) => {
+                    const meta = getOrderItemMetaText(item);
+                    return (
+                      <article
+                        key={item.id ?? `${item.product_id}-${item.product_option_id}`}
+                        role="listitem"
+                        className="admin-order-mobile-item-card"
+                      >
+                        <div className="admin-order-mobile-item-head">
+                          <p className="admin-order-mobile-item-name">{getOrderItemDisplayName(item)}</p>
+                          <span className="admin-order-mobile-item-qty">Qtd {item.quantity}</span>
+                        </div>
+                        {meta ? <p className="admin-order-mobile-item-meta">{meta}</p> : null}
+                        <div className="admin-order-mobile-item-values">
+                          <p>
+                            <span>Preço</span>
+                            <strong>{formatCurrency(item.unit_price_cents)}</strong>
+                          </p>
+                          <p>
+                            <span>Subtotal</span>
+                            <strong>{formatCurrency(item.subtotal_cents)}</strong>
+                          </p>
+                        </div>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <div className="admin-order-mobile-empty-card">Sem itens listados.</div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -782,8 +2344,8 @@ function OrderDetailModal({ order, onClose, onUpdated, setSelectedOrder, onToast
 
           {(order.rejection_reason_text || order.cancellation_reason_code || order.cancellation_reason_text) && (
             <div className="admin-section">
-              <div className="admin-section-header">
-                <div>
+              <div className="admin-section-header admin-orders-section-header">
+                <div className="admin-orders-centered-heading">
                   <p className="admin-section-kicker">Motivos</p>
                   <h3 className="admin-section-title">Reprovação/Cancelamento</h3>
                 </div>
@@ -795,46 +2357,56 @@ function OrderDetailModal({ order, onClose, onUpdated, setSelectedOrder, onToast
               </p>
             </div>
           )}
-        </div>
+          <div className="admin-order-detail-actions-block">
+            <span className="admin-card-copy admin-order-modal-total bg-pink-600 mb-2">Total: {formatCurrency(order.total_cents)}</span>
+            <div className="admin-footer-actions">
+              {order.status === 'pending' && (
+                <div className="admin-order-pending-actions">
 
-        <div className="admin-modal-footer">
-          <span className="admin-card-copy">Total: {formatCurrency(order.total_cents)}</span>
-          <div className="admin-footer-actions">
-            {order.status === 'pending' && (
-              <>
-                <button type="button" className="admin-button admin-button-danger" onClick={() => setRejectOpen(true)}>
-                  Reprovar Pedido
+                  <button
+                    type="button"
+                    className="flex flex-col items-center justify-center gap-1 rounded-full font-sans font-bold text-white bg-red-600 py-3 px-4"
+                    onClick={() => setRejectOpen(true)}
+                  >
+                    <IoClose className="text-2xl font-bold" />
+                    <span>Reprovar Pedido</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex flex-col items-center justify-center gap-1 rounded-full font-sans font-bold text-white bg-green-600 py-3 px-4"
+                    onClick={() => setApproveOpen(true)}
+                  >
+                    <FaCheck className="text-lg" />
+                    <span>Aprovar e iniciar</span>
+                  </button>
+                </div>
+              )}
+              {order.status === 'in_progress' && (
+                <>
+                  <button type="button" className="admin-button admin-button-danger" onClick={() => setCancelOpen(true)}>
+                    Cancelar Pedido
+                  </button>
+                  <button type="button" className="admin-button" onClick={() => setFinishOpen(true)}>
+                    Concluir
+                  </button>
+                </>
+              )}
+              {order.status === 'finished' && (
+                <button type="button" className="admin-button-outline" onClick={() => setFinishOpen(true)}>
+                  Ajustar pagamento
                 </button>
-                <button type="button" className="admin-button" onClick={() => setApproveOpen(true)}>
-                  Aprovar e iniciar
-                </button>
-              </>
-            )}
-            {order.status === 'in_progress' && (
-              <>
-                <button type="button" className="admin-button admin-button-danger" onClick={() => setCancelOpen(true)}>
-                  Cancelar Pedido
-                </button>
-                <button type="button" className="admin-button" onClick={() => setFinishOpen(true)}>
-                  Concluir
-                </button>
-              </>
-            )}
-            {order.status === 'finished' && (
-              <button type="button" className="admin-button-outline" onClick={() => setFinishOpen(true)}>
-                Ajustar pagamento
-              </button>
-            )}
-            {canDelete && (
-              <>
-                <button type="button" className="admin-button admin-button-danger" onClick={() => setDeleteOpen(true)}>
-                  Excluir pedido
-                </button>
-                <button type="button" className="admin-button-ghost" onClick={onClose}>
-                  Fechar
-                </button>
-              </>
-            )}
+              )}
+              {canDelete && (
+                <>
+                  <button type="button" className="admin-button admin-button-danger" onClick={() => setDeleteOpen(true)}>
+                    Excluir pedido
+                  </button>
+                  <button type="button" className="admin-button-ghost" onClick={onClose}>
+                    Fechar
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -921,7 +2493,7 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
   const [phone, setPhone] = useState(order.customer_phone ?? '');
   const [deliveryDate, setDeliveryDate] = useState(order.delivery_date ?? '');
   const [paymentDone, setPaymentDone] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<string>('pix');
+  const [paymentMethod, setPaymentMethod] = useState<string>(order.payment_method ?? 'pix');
   const initialItems = useMemo(
     () =>
       (order.order_items ?? []).map((item) => ({
@@ -961,7 +2533,7 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
 
   const handleConfirm = async () => {
     if (saving) return;
-    const confirmed = window.confirm('Confirmar reprovação do pedido? Esta ação não pode ser desfeita.');
+    const confirmed = window.confirm('Confirmar aprovação e início do pedido? Esta ação não pode ser desfeita.');
     if (!confirmed) return;
     setSaving(true);
     setError(null);
@@ -982,7 +2554,7 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
 
       const orderUpdate = {
         delivery_date: deliveryDate || null,
-        payment_method: paymentDone ? paymentMethod : null,
+        payment_method: paymentMethod,
         payment_status: paymentDone ? 'paid' : 'due',
         payment_due: !paymentDone,
         total_cents: totalCents,
@@ -1031,7 +2603,7 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
             .from('orders')
             .update(orderUpdate)
             .eq('id', order.id)
-            .select(ORDER_SELECT_WITH_ITEMS)
+            .select(ORDER_SELECT_BASE_WITH_ITEMS)
             .single(),
         { label: 'approve-order' }
       );
@@ -1069,10 +2641,10 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
         .join('\n');
       const message = encodeURIComponent(
         `Olá, ${order.customer_name ?? 'cliente'}! Recebemos seu pedido e ele já está em andamento.\n` +
-          `Entrega: ${deliveryDate ? formatDate(deliveryDate) : 'A combinar'}\n` +
-          `Total: ${formatCurrency(totalCents)}\n` +
-          `Itens:\n${summary}\n` +
-          `Qualquer dúvida, estamos à disposição.`
+        `Entrega: ${deliveryDate ? formatDate(deliveryDate) : 'A combinar'}\n` +
+        `Total: ${formatCurrency(totalCents)}\n` +
+        `Itens:\n${summary}\n` +
+        `Qualquer dúvida, estamos à disposição.`
       );
       window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
 
@@ -1086,16 +2658,18 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
   };
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal" style={{ maxHeight: '90vh', width: 'min(960px, 100%)' }}>
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Aprovar pedido</p>
+    <div className="admin-modal-backdrop admin-order-action-backdrop">
+      <div className="admin-modal admin-order-approve-modal admin-order-action-modal" style={{ maxHeight: '90vh' }}>
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Aprovar pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
           </div>
-          <button type="button" className="admin-button-ghost" onClick={onClose}>
-            Fechar
-          </button>
         </div>
         <div className="admin-modal-body">
           <div className="admin-form-grid">
@@ -1145,61 +2719,102 @@ function ApproveModal({ order, onClose, onUpdated }: ActionModalProps) {
           </div>
 
           <div className="admin-section">
-            <div className="admin-section-header">
-              <div>
+            <div className="admin-section-header admin-orders-section-header">
+              <div className="admin-orders-centered-heading">
                 <p className="admin-section-kicker">Itens</p>
                 <h3 className="admin-section-title">Ajustar quantidades/preços</h3>
               </div>
-              <div className="admin-section-actions">
-                <p className="admin-card-copy" style={{ margin: 0 }}>
-                  Total: {formatCurrency(totalCents)}
-                </p>
+            </div>
+            <div className="admin-section-actions admin-orders-section-actions-block">
+              <p className="admin-card-copy admin-order-section-total">Total: {formatCurrency(totalCents)}</p>
+            </div>
+
+            <div className="admin-orders-desktop-only">
+              <div className="admin-table admin-quantity-table">
+                <div className="admin-table-header">
+                  <div>Qtd</div>
+                  <div>Descrição</div>
+                  <div>Preço unitário (R$)</div>
+                  <div>Subtotal</div>
+                </div>
+                {items.map((item, index) => (
+                  <div key={item.id ?? index} className="admin-table-row">
+                    <div>
+                      <input
+                        type="number"
+                        min={1}
+                        className="admin-input admin-table-input"
+                        value={item.quantity}
+                        onChange={(e) => handleChangeItem(index, 'quantity', e.target.value)}
+                      />
+                    </div>
+                    <div className="admin-cell-left">
+                      <div className="admin-product-name">{getOrderItemDisplayName(item)}</div>
+                      <div className="admin-cell-text">{getOrderItemMetaText(item)}</div>
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="admin-input admin-table-input"
+                        value={item.unit_price_cents / 100}
+                        onChange={(e) => handleChangeItem(index, 'unit_price_cents', e.target.value)}
+                      />
+                    </div>
+                    <div className="admin-col-number">{formatCurrency(item.subtotal_cents)}</div>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="admin-table admin-quantity-table">
-              <div className="admin-table-header">
-                <div>Qtd</div>
-                <div>Descrição</div>
-                <div>Preço unitário (R$)</div>
-                <div>Subtotal</div>
+
+            <div className="admin-orders-mobile-only">
+              <div className="admin-order-mobile-item-list admin-order-mobile-item-list-editable" role="list" aria-label="Ajuste de itens">
+                {items.map((item, index) => {
+                  const meta = getOrderItemMetaText(item);
+                  return (
+                    <article key={item.id ?? index} role="listitem" className="admin-order-mobile-item-card">
+                      <div className="admin-order-mobile-item-head">
+                        <p className="admin-order-mobile-item-name">{getOrderItemDisplayName(item)}</p>
+                        <span className="admin-order-mobile-item-qty">Qtd {item.quantity}</span>
+                      </div>
+                      {meta ? <p className="admin-order-mobile-item-meta">{meta}</p> : null}
+                      <div className="admin-order-mobile-edit-grid">
+                        <label className="admin-field">
+                          <span>Quantidade</span>
+                          <input
+                            type="number"
+                            min={1}
+                            className="admin-input"
+                            value={item.quantity}
+                            onChange={(e) => handleChangeItem(index, 'quantity', e.target.value)}
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Preço unitário (R$)</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className="admin-input"
+                            value={item.unit_price_cents / 100}
+                            onChange={(e) => handleChangeItem(index, 'unit_price_cents', e.target.value)}
+                          />
+                        </label>
+                      </div>
+                      <p className="admin-order-mobile-item-subtotal">
+                        Subtotal: <strong>{formatCurrency(item.subtotal_cents)}</strong>
+                      </p>
+                    </article>
+                  );
+                })}
               </div>
-              {items.map((item, index) => (
-                <div key={item.id ?? index} className="admin-table-row">
-                  <div>
-                    <input
-                      type="number"
-                      min={1}
-                      className="admin-input admin-table-input"
-                      value={item.quantity}
-                      onChange={(e) => handleChangeItem(index, 'quantity', e.target.value)}
-                    />
-                  </div>
-                  <div className="admin-cell-left">
-                    <div className="admin-product-name">{getOrderItemDisplayName(item)}</div>
-                    <div className="admin-cell-text">{getOrderItemMetaText(item)}</div>
-                  </div>
-                  <div>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="admin-input admin-table-input"
-                      value={item.unit_price_cents / 100}
-                      onChange={(e) => handleChangeItem(index, 'unit_price_cents', e.target.value)}
-                    />
-                  </div>
-                  <div className="admin-col-number">{formatCurrency(item.subtotal_cents)}</div>
-                </div>
-              ))}
             </div>
           </div>
           {error && <div className="admin-inline-error">{error}</div>}
         </div>
         <div className="admin-modal-footer">
           <div className="admin-footer-actions">
-            <button type="button" className="admin-button-ghost" onClick={onClose}>
-              Cancelar
-            </button>
             <button type="button" className="admin-button" onClick={handleConfirm} disabled={saving}>
               {saving ? 'Salvando...' : 'Aprovar e iniciar'}
             </button>
@@ -1218,7 +2833,7 @@ function RejectModal({ order, onClose, onUpdated }: ActionModalProps) {
 
   const handleConfirm = async () => {
     if (saving) return;
-    const confirmed = window.confirm('Confirmar cancelamento do pedido? Esta ação não pode ser desfeita.');
+    const confirmed = window.confirm('Confirmar reprovação do pedido? Esta ação não pode ser desfeita.');
     if (!confirmed) return;
     setSaving(true);
     setError(null);
@@ -1229,7 +2844,7 @@ function RejectModal({ order, onClose, onUpdated }: ActionModalProps) {
             .from('orders')
             .update({ status: 'rejected', rejection_reason_text: reason || null })
             .eq('id', order.id)
-            .select(ORDER_SELECT_WITH_ITEMS)
+            .select(ORDER_SELECT_BASE_WITH_ITEMS)
             .single(),
         { label: 'reject-order' }
       );
@@ -1254,16 +2869,18 @@ function RejectModal({ order, onClose, onUpdated }: ActionModalProps) {
   };
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal">
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Reprovar pedido</p>
+    <div className="admin-modal-backdrop admin-order-action-backdrop admin-order-reject-backdrop">
+      <div className="admin-modal admin-order-reject-modal admin-order-action-modal">
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Reprovar pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
           </div>
-          <button type="button" className="admin-button-ghost" onClick={onClose}>
-            Fechar
-          </button>
         </div>
         <div className="admin-modal-body">
           <label className="admin-field admin-textarea-field">
@@ -1277,11 +2894,8 @@ function RejectModal({ order, onClose, onUpdated }: ActionModalProps) {
           </label>
           {error && <div className="admin-inline-error">{error}</div>}
         </div>
-        <div className="admin-modal-footer">
+        <div className="admin-modal-footer admin-order-reject-footer">
           <div className="admin-footer-actions">
-            <button type="button" className="admin-button-ghost" onClick={onClose}>
-              Voltar
-            </button>
             <button
               type="button"
               className="admin-button admin-button-danger"
@@ -1319,7 +2933,7 @@ function CancelModal({ order, onClose, onUpdated }: ActionModalProps) {
               cancellation_reason_text: reasonText || null,
             })
             .eq('id', order.id)
-            .select(ORDER_SELECT_WITH_ITEMS)
+            .select(ORDER_SELECT_BASE_WITH_ITEMS)
             .single(),
         { label: 'cancel-order' }
       );
@@ -1344,16 +2958,18 @@ function CancelModal({ order, onClose, onUpdated }: ActionModalProps) {
   };
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal">
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Cancelar pedido</p>
+    <div className="admin-modal-backdrop admin-order-action-backdrop">
+      <div className="admin-modal admin-order-action-modal admin-order-cancel-modal">
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Cancelar pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
           </div>
-          <button type="button" className="admin-button-ghost" onClick={onClose}>
-            Fechar
-          </button>
         </div>
         <div className="admin-modal-body">
           <div className="admin-form-grid">
@@ -1463,16 +3079,18 @@ function DeleteOrderModal({ order, onClose, onDeleted, onToast }: DeleteOrderMod
   };
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal">
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Excluir pedido</p>
+    <div className="admin-modal-backdrop admin-order-action-backdrop">
+      <div className="admin-modal admin-order-action-modal admin-order-delete-modal">
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Excluir pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
           </div>
-          <button type="button" className="admin-button-ghost" onClick={onClose}>
-            Fechar
-          </button>
         </div>
         <div className="admin-modal-body">
           <div className="admin-inline-error">
@@ -1537,7 +3155,7 @@ function FinishModal({ order, onClose, onUpdated }: ActionModalProps) {
             .from('orders')
             .update(payload)
             .eq('id', order.id)
-            .select(ORDER_SELECT_WITH_ITEMS)
+            .select(ORDER_SELECT_BASE_WITH_ITEMS)
             .single(),
         { label: 'finish-order' }
       );
@@ -1562,16 +3180,18 @@ function FinishModal({ order, onClose, onUpdated }: ActionModalProps) {
   };
 
   return (
-    <div className="admin-modal-backdrop">
-      <div className="admin-modal">
-        <div className="admin-modal-header">
-          <div>
-            <p className="admin-modal-subtitle">Concluir pedido</p>
+    <div className="admin-modal-backdrop admin-order-action-backdrop">
+      <div className="admin-modal admin-order-action-modal admin-order-finish-modal">
+        <div className="admin-modal-header admin-order-modal-header-inline">
+          <div className="admin-order-modal-header-copy">
+            <div className="admin-order-modal-subtitle-row">
+              <p className="admin-modal-subtitle">Concluir pedido</p>
+              <button type="button" className="admin-modal-close-icon" onClick={onClose} aria-label="Fechar modal">
+                <FaTimes aria-hidden="true" focusable="false" />
+              </button>
+            </div>
             <h2 className="admin-modal-title">#{order.id}</h2>
           </div>
-          <button type="button" className="admin-button-ghost" onClick={onClose}>
-            Fechar
-          </button>
         </div>
         <div className="admin-modal-body">
           <div className="admin-form-grid">

@@ -1,32 +1,41 @@
 import { useState } from 'react';
+import {
+  FaArrowRightFromBracket,
+  FaChevronLeft,
+} from 'react-icons/fa6';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth/AuthProvider';
 import { supabase } from '../../lib/supabase';
 
 const sections = [
   {
-    title: 'Operacao',
+    title: 'Operação',
     links: [
-      { to: '/admin/dashboard', label: 'Dashboard' },
-      { to: '/admin/pedidos', label: 'Pedidos' },
-      { to: '/admin/produtos', label: 'Produtos' },
+      {
+        to: '/admin/pedidos',
+        label: 'Pedidos',
+      },
+      {
+        to: '/admin/produtos',
+        label: 'Produtos',
+      },
     ],
   },
-  {
-    title: 'Financeiro',
-    links: [
-      { to: '/admin/financeiro', label: 'Dashboard Financeiro' },
-      { to: '/admin/recibos', label: 'Recibos' },
-    ],
-  },
-];
+] satisfies Array<{
+  title: string;
+  links: Array<{
+    to: string;
+    label: string;
+  }>;
+}>;
 
 type AdminSidebarProps = {
   onNavigate?: () => void;
   isMobile?: boolean;
+  onCloseMobile?: () => void;
 };
 
-export default function AdminSidebar({ onNavigate, isMobile }: AdminSidebarProps) {
+export default function AdminSidebar({ onNavigate, isMobile, onCloseMobile }: AdminSidebarProps) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -53,7 +62,7 @@ export default function AdminSidebar({ onNavigate, isMobile }: AdminSidebarProps
       }
     } catch (error) {
       await supabase.auth.signOut();
-      alert('Falha ao sair do Supabase. SessÇãÇ§o encerrada localmente.');
+      alert('Falha ao sair do Supabase. Sessao encerrada localmente.');
     } finally {
       clearSupabaseStorage();
       navigate('/admin/login', { replace: true });
@@ -64,31 +73,38 @@ export default function AdminSidebar({ onNavigate, isMobile }: AdminSidebarProps
 
   return (
     <aside className={`admin-sidebar${isMobile ? ' admin-sidebar-mobile' : ''}`}>
+      {isMobile && onCloseMobile ? (
+        <button
+          type="button"
+          className="admin-sidebar-mobile-close"
+          aria-label="Fechar menu lateral"
+          onClick={onCloseMobile}
+        >
+          <FaChevronLeft aria-hidden="true" focusable="false" />
+        </button>
+      ) : null}
       <div className="admin-sidebar-brand">
         <div className="admin-logo">
           <img src="/logo.png" alt="Sweet Child" />
         </div>
         <div className="admin-branding">
-          <span className="admin-brand">Sweet Child</span>
-          <p className="admin-brand-subtitle">Painel administrativo</p>
+          <span className="admin-brand">Menu</span>
         </div>
       </div>
       <nav className="admin-sidebar-nav">
         {sections.map((section, sectionIndex) => (
           <div key={section.title} className="admin-sidebar-section">
-            <span className="admin-sidebar-section-title">{section.title}</span>
+            <p className="admin-sidebar-section-title">{section.title}</p>
             <div className="admin-sidebar-section-links">
               {section.links.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
                   end
-                  className={({ isActive }) =>
-                    `admin-sidebar-link${isActive ? ' active' : ''}`
-                  }
+                  className={({ isActive }) => `admin-sidebar-link${isActive ? ' active' : ''}`}
                   onClick={onNavigate}
                 >
-                  {link.label}
+                  <span className="admin-sidebar-link-label">{link.label}</span>
                 </NavLink>
               ))}
             </div>
@@ -98,20 +114,21 @@ export default function AdminSidebar({ onNavigate, isMobile }: AdminSidebarProps
           </div>
         ))}
       </nav>
-      <div className="admin-sidebar-footer">
+      <div className="admin-sidebar-footer mt-4">
         <span className="admin-sidebar-divider" aria-hidden="true" />
         <button type="button" className="admin-logout" onClick={handleLogout} disabled={loggingOut}>
+          <FaArrowRightFromBracket aria-hidden="true" />
           {loggingOut ? 'Saindo...' : 'Sair da conta'}
         </button>
         <a
-          className="admin-sidebar-credit"
+          className="text-gray-600 text-xs text-center"
           href="https://deltacode-eight.vercel.app/"
           target="_blank"
           rel="noreferrer"
         >
           Desenvolvido por Delta Code
         </a>
-        <span className="admin-sidebar-version">versão beta 1.0</span>
+        <span className="admin-sidebar-version text-center">versão beta 1.0</span>
       </div>
     </aside>
   );

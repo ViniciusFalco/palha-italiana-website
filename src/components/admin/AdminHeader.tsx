@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import AdminHeaderMetrics from './AdminHeaderMetrics';
 import { useAuth } from '../../lib/auth/AuthProvider';
 import { supabase } from '../../lib/supabase';
 
@@ -20,6 +22,45 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', cu
 const formatCount = (value: number) => countFormatter.format(value);
 const formatCurrency = (cents: number) => currencyFormatter.format(cents / 100);
 
+const HEADER_META = [
+  {
+    match: '/admin/pedidos',
+    eyebrow: 'Fluxo Sweet Child',
+    title: 'Pedidos em acompanhamento',
+    description: 'Pendencias, aprovacoes e entregas organizadas em um unico ritmo visual.',
+  },
+  {
+    match: '/admin/produtos',
+    eyebrow: 'Catalogo Sweet Child',
+    title: 'Produtos e categorias',
+    description: 'Edite o catalogo com mais clareza, espaco e consistencia editorial.',
+  },
+  {
+    match: '/admin/dashboard',
+    eyebrow: 'Em desenvolvimento',
+    title: 'Dashboard',
+    description: 'Esta aba sera disponibilizada em breve.',
+  },
+  {
+    match: '/admin/financeiro',
+    eyebrow: 'Em desenvolvimento',
+    title: 'Financeiro',
+    description: 'Esta aba sera disponibilizada em breve.',
+  },
+  {
+    match: '/admin/recibos',
+    eyebrow: 'Em desenvolvimento',
+    title: 'Recibos',
+    description: 'Esta aba sera disponibilizada em breve.',
+  },
+  {
+    match: '/admin',
+    eyebrow: 'Em desenvolvimento',
+    title: 'Dashboard',
+    description: 'Esta aba sera disponibilizada em breve.',
+  },
+] as const;
+
 const getMonthRange = (reference: Date) => {
   const start = new Date(reference.getFullYear(), reference.getMonth(), 1, 0, 0, 0, 0);
   const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 1, 0, 0, 0, 0);
@@ -28,9 +69,11 @@ const getMonthRange = (reference: Date) => {
 
 export default function AdminHeader({ onOpenMobileMenu }: AdminHeaderProps) {
   const { withAuthRetry } = useAuth();
+  const location = useLocation();
   const headerRef = useRef<HTMLElement | null>(null);
   const loadingRef = useRef(false);
   const hasLoadedRef = useRef(false);
+  const [mobileCompact, setMobileCompact] = useState(false);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<HeaderMetrics>({
     pending: 0,
@@ -114,6 +157,30 @@ export default function AdminHeader({ onOpenMobileMenu }: AdminHeaderProps) {
     return () => window.removeEventListener(METRICS_EVENT, handleRefresh);
   }, [loadMetrics]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia('(max-width: 980px)');
+    const updateMobileCompact = () => {
+      if (!mediaQuery.matches) {
+        setMobileCompact(false);
+        return;
+      }
+      setMobileCompact(window.scrollY > 18);
+    };
+
+    updateMobileCompact();
+    window.addEventListener('scroll', updateMobileCompact, { passive: true });
+    window.addEventListener('resize', updateMobileCompact);
+    mediaQuery.addEventListener('change', updateMobileCompact);
+
+    return () => {
+      window.removeEventListener('scroll', updateMobileCompact);
+      window.removeEventListener('resize', updateMobileCompact);
+      mediaQuery.removeEventListener('change', updateMobileCompact);
+    };
+  }, []);
+
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     const target = headerRef.current;
@@ -125,28 +192,60 @@ export default function AdminHeader({ onOpenMobileMenu }: AdminHeaderProps) {
     };
 
     updateHeight();
-    if (typeof ResizeObserver === 'undefined') return;
+    window.addEventListener('resize', updateHeight);
+
+    if (typeof ResizeObserver === 'undefined') {
+      return () => window.removeEventListener('resize', updateHeight);
+    }
+
     const observer = new ResizeObserver(() => updateHeight());
     observer.observe(target);
-    return () => observer.disconnect();
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      observer.disconnect();
+    };
   }, []);
 
-  const pendingValue = useMemo(() => (loading ? '--' : formatCount(metrics.pending)), [loading, metrics.pending]);
-  const inProgressValue = useMemo(
-    () => (loading ? '--' : formatCount(metrics.inProgress)),
-    [loading, metrics.inProgress]
-  );
-  const finishedValue = useMemo(
-    () => (loading ? '--' : formatCount(metrics.finishedMonth)),
-    [loading, metrics.finishedMonth]
-  );
-  const totalSalesValue = useMemo(
-    () => (loading ? '--' : formatCurrency(metrics.totalSalesMonth)),
-    [loading, metrics.totalSalesMonth]
-  );
+  const meta =
+    HEADER_META.find((item) =>
+      item.match === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(item.match)
+    ) ?? HEADER_META[HEADER_META.length - 1];
+
+  const todayLabel = new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date());
+
+  const metricItems = [
+    {
+      label: 'Pendentes',
+      value: loading ? '--' : formatCount(metrics.pending),
+      helper: 'Aguardando aprovacao',
+      tone: 'warning' as const,
+    },
+    {
+      label: 'Em andamento',
+      value: loading ? '--' : formatCount(metrics.inProgress),
+      helper: 'Pedidos em producao',
+      tone: 'primary' as const,
+    },
+    {
+      label: 'Concluidos no mes',
+      value: loading ? '--' : formatCount(metrics.finishedMonth),
+      helper: 'Pedidos finalizados',
+      tone: 'success' as const,
+    },
+    {
+      label: 'Receita do mes',
+      value: loading ? '--' : formatCurrency(metrics.totalSalesMonth),
+      helper: `Atualizado em ${todayLabel}`,
+      tone: 'primary' as const,
+    },
+  ];
 
   return (
-    <header className="admin-header" ref={headerRef}>
+    <header className={`admin-header${mobileCompact ? ' is-mobile-compact' : ''}`} ref={headerRef}>
       <div className="admin-header-inner">
         <button
           type="button"
@@ -159,24 +258,22 @@ export default function AdminHeader({ onOpenMobileMenu }: AdminHeaderProps) {
           <span />
         </button>
 
-        <div className="admin-header-metrics">
-          <div className="header-card">
-            <span className="header-card-label">Pedidos pendentes</span>
-            <span className="header-card-value">{pendingValue}</span>
-          </div>
-          <div className="header-card">
-            <span className="header-card-label">Pedidos em andamento</span>
-            <span className="header-card-value">{inProgressValue}</span>
-          </div>
-          <div className="header-card">
-            <span className="header-card-label">Pedidos concluídos no mês</span>
-            <span className="header-card-value">{finishedValue}</span>
-          </div>
-          <div className="header-card">
-            <span className="header-card-label">Total de vendas no mês</span>
-            <span className="header-card-value">{totalSalesValue}</span>
+        <div className="admin-header-mobile-brand" aria-label="Sweet Child">
+          <img src="/logo.svg" alt="Sweet Child" />
+        </div>
+
+        <div className="admin-header-copy">
+          <div className="admin-header-copy-inner">
+            <p className="admin-header-kicker">{meta.eyebrow}</p>
+            <div className="admin-header-title-row">
+              <h1 className="admin-header-title">{meta.title}</h1>
+              <span className="admin-header-date">{todayLabel}</span>
+            </div>
+            <p className="admin-header-description">{meta.description}</p>
           </div>
         </div>
+
+        <AdminHeaderMetrics items={metricItems} />
       </div>
     </header>
   );

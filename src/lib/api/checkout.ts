@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { createPublicUuid, insertPublicRows } from '../supabasePublic';
 import type { CartItem, CartState } from '../../types/cart';
 
 export async function checkout(
@@ -11,9 +11,11 @@ export async function checkout(
   },
   cart: CartState
 ): Promise<string> {
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
+  const orderId = createPublicUuid();
+  const { error: orderError } = await insertPublicRows<null>(
+    'orders',
+    {
+      id: orderId,
       customer_name: customer.name,
       customer_phone: customer.phone,
       customer_email: customer.email ?? null,
@@ -21,17 +23,17 @@ export async function checkout(
       note: customer.note ?? null,
       status: 'pending',
       total_cents: cart.total_cents,
-    })
-    .select('id')
-    .single();
+    }
+  );
 
-  if (orderError || !order) {
-    throw orderError ?? new Error('Falha ao criar pedido');
+  if (orderError) {
+    throw orderError;
   }
 
   if (cart.items.length > 0) {
     const itemsPayload = cart.items.map((item: CartItem) => ({
-      order_id: order.id,
+      id: createPublicUuid(),
+      order_id: orderId,
       product_id: item.product_id,
       product_option_id: item.option_id ?? null,
       quantity: item.quantity,
@@ -45,12 +47,10 @@ export async function checkout(
       form_color: item.form_color ?? null,
     }));
 
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(itemsPayload);
+    const { error: itemsError } = await insertPublicRows<null>('order_items', itemsPayload);
 
     if (itemsError) throw itemsError;
   }
 
-  return order.id as string;
+  return orderId;
 }

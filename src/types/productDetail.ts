@@ -1,4 +1,4 @@
-export type ProductDetailInputType = 'text' | 'textarea' | 'select';
+export type ProductDetailInputType = 'text' | 'textarea' | 'select' | 'multi_select';
 
 export interface ProductDetailOption {
   id?: string;

@@ -1,38 +1,57 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Footer from '../components/Footer';
 import Checkout from '../components/Checkout';
 import ProductSelector from '../components/ProductSelector';
-import { FaShoppingCart, FaPlus, FaArrowLeft } from 'react-icons/fa';
+import { FaShoppingCart, FaPlus, FaArrowLeft, FaUserShield } from 'react-icons/fa';
 import type { CartItem, FormData, ProductOption } from '../types';
+import type { Category } from '../types/product';
 import { supabase } from '../lib/supabase';
-import { supabaseAnon } from '../lib/supabaseAnon';
+import { createPublicUuid, insertPublicRows } from '../lib/supabasePublic';
 import { fetchCatalog, type UIProduct } from '../lib/catalog';
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans&display=swap" rel="stylesheet"></link>
 
-type CategoryKey = 'packaging' | 'party' | 'cake';
+const CART_STORAGE_KEY = 'order_page_cart_v1';
 
-const CATEGORY_LABELS: Record<CategoryKey, string> = {
-  packaging: 'Embalagens',
-  party: 'Docinhos',
-  cake: 'Tortas',
+const loadPersistedCartItems = (): CartItem[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        typeof item.name === 'string' &&
+        typeof item.price === 'number' &&
+        typeof item.quantity === 'number'
+    ) as CartItem[];
+  } catch {
+    return [];
+  }
 };
-const BACKGROUND_ROTATION_MS = 7800;
-const BACKGROUND_FADE_MS = 2000;
 
 const OrderPage = () => {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => loadPersistedCartItems());
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(null);
-  const [bgIndexes, setBgIndexes] = useState<Record<CategoryKey, number>>({
-    packaging: 0,
-    party: 0,
-    cake: 0,
-  });
+  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [overrideMap, setOverrideMap] = useState<Map<string, number>>(new Map());
   const [deltaMap, setDeltaMap] = useState<Map<string, number>>(new Map());
   const [remoteItems, setRemoteItems] = useState<UIProduct[] | null>(null);
+  const bottomBarVisible = activeCategory !== null || cartItems.length > 0;
   const showFooter = activeCategory !== null;
+  const popStateRef = useRef(false);
+  const lastSelectedProductRef = useRef<ProductOption | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [checkoutPreserveState, setCheckoutPreserveState] = useState(false);
+  const [productClosing, setProductClosing] = useState(false);
+  const productCloseTimerRef = useRef<number | null>(null);
 
   // Checagem de pedidos pendentes
   useEffect(() => {
@@ -47,6 +66,71 @@ const OrderPage = () => {
   // Scroll para o topo ao carregar
   useEffect(() => {
     window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (cartItems.length === 0) {
+        window.localStorage.removeItem(CART_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    } catch {}
+  }, [cartItems]);
+
+  // Inicializa estado do histórico para controlar "voltar"
+  useEffect(() => {
+    const state = window.history.state ?? {};
+    if (state.orderCategoryId === undefined || state.orderOverlay === undefined) {
+      window.history.replaceState(
+        {
+          ...state,
+          orderCategoryId: state.orderCategoryId ?? null,
+          orderOverlay: state.orderOverlay ?? null,
+        },
+        ''
+      );
+    }
+  }, []);
+
+  // Carrega categorias ativas
+  useEffect(() => {
+    let ignore = false;
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+      setCategoriesError(null);
+      try {
+        const { data, error } = await supabase
+          .from('categories')
+          .select('id, slug, name, description, image_url, sort_order, is_active')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (ignore) return;
+        if (error) {
+          setCategoriesError('Não foi possível carregar as categorias agora.');
+          setCategories([]);
+        } else {
+          setCategories((data ?? []) as Category[]);
+        }
+      } catch {
+        if (!ignore) {
+          setCategoriesError('Não foi possível carregar as categorias agora.');
+          setCategories([]);
+        }
+      } finally {
+        if (!ignore) {
+          setCategoriesLoading(false);
+        }
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const updateItemQuantity = (index: number, newQuantity: number) => {
@@ -64,7 +148,7 @@ const OrderPage = () => {
       description: 'Embalagem com fita - Tamanho 5x5',
       basePrice: 4.50,
       image: '/images/embalagem-fita.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       requiresRibbonWidth: true,
       requiresRibbonColor: true,
@@ -75,7 +159,7 @@ const OrderPage = () => {
       description: 'Palha bem casado - Tamanho 5x5',
       basePrice: 5.50,
       image: '/images/bem_casado.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       minQuantity: 40,
       quickQuantities: [40, 60, 80, 100, 120, 150],
@@ -86,7 +170,7 @@ const OrderPage = () => {
       description: 'Embalagem com adesivos - Tamanho 5x5',
       basePrice: 4.50,
       image: '/images/embalagem-adesivos.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       minQuantity: 20,
     },
@@ -95,7 +179,7 @@ const OrderPage = () => {
       description: 'Caixa milk com tema à escolha',
       basePrice: 16.90,
       image: '/images/embalagem-milkcomtema.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       requiresRibbonWidth: true,
       requiresRibbonColor: true,
@@ -105,7 +189,7 @@ const OrderPage = () => {
       description: 'Palhas juta e fita - Tamanho 5x5',
       basePrice: 5.50,
       image: '/images/embalagem-jutaefita.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       requiresRibbonWidth: true,
       requiresRibbonColor: true,
@@ -115,7 +199,7 @@ const OrderPage = () => {
       description: 'Palhas picadinhas por Kg - 1Kg R$ 69,90 | 1/2 Kg R$ 40,00',
       basePrice: 69.90,
       image: '/images/embalagem-colherpote100ml.jpg',
-      category: 'packaging',
+      categorySlug: 'packaging',
       requiresFlavor: true,
       requiresSize: true,
       sizeOptions: [
@@ -134,7 +218,7 @@ const OrderPage = () => {
       description: 'Docinho de palha italiana na forminha - R$ 1,50 cada',
       basePrice: 1.50,
       image: '/images/docesdefestas-forminha.jpg',
-      category: 'party',
+      categorySlug: 'party',
       requiresFlavor: true,
       requiresFormColor: true,
       minQuantity: 100,
@@ -144,7 +228,7 @@ const OrderPage = () => {
       description: 'Docinho de palha italiana embaladas com fita - R$ 1,50 cada',
       basePrice: 1.50,
       image: '/images/docesdefestas-fita.jpg',
-      category: 'party',
+      categorySlug: 'party',
       requiresFlavor: true,
       requiresRibbonWidth: true,
       requiresRibbonColor: true,
@@ -157,7 +241,7 @@ const OrderPage = () => {
       description: 'Torta rústica com cobertura simples',
       basePrice: 69.90,
       image: '/images/tortas-rustica.jpg',
-      category: 'cake',
+      categorySlug: 'cake',
       requiresFlavor: true,
       requiresSize: true,
       sizeOptions: [
@@ -170,7 +254,7 @@ const OrderPage = () => {
       description: 'Torta personalizada com cobertura à escolha',
       basePrice: 79.90,
       image: '/images/tortas-personalizada.jpg',
-      category: 'cake',
+      categorySlug: 'cake',
       requiresFlavor: true,
       requiresCoverage: true,
       requiresSize: true,
@@ -283,11 +367,14 @@ const OrderPage = () => {
           price: opt.price,
         }));
         return {
+          id: item.id,
           sku: item.sku,
           name: item.name,
-          description: item.description,
+          description: item.description ?? '',
           image: item.image,
-          category: item.category,
+          categoryId: item.categoryId ?? null,
+          categorySlug: item.categorySlug ?? null,
+          categoryName: item.categoryName ?? null,
           basePrice: item.basePrice,
           minQuantity: item.minQuantity,
           requiresFlavor: item.requiresFlavor,
@@ -315,7 +402,14 @@ const OrderPage = () => {
   }, [HARDCODED, overrideMap, deltaMap, remoteItems]);
 
   const addToCart = (item: CartItem) => {
+    const editingIndexSnapshot = editingIndex;
     setCartItems(prev => {
+      if (editingIndexSnapshot !== null && prev[editingIndexSnapshot]) {
+        const next = [...prev];
+        next[editingIndexSnapshot] = { ...item };
+        return next;
+      }
+
       const existingItem = prev.find(cartItem =>
         cartItem.name === item.name &&
         cartItem.flavor === item.flavor &&
@@ -335,14 +429,23 @@ const OrderPage = () => {
       }
       return [...prev, item];
     });
+    if (editingIndexSnapshot !== null) {
+      setEditingIndex(null);
+    }
   };
 
   const handleCompleteOrder = async (formData: FormData, total: number) => {
     const addressLine =
       (formData.address && formData.address.trim()) ||
-      [formData.street, formData.houseNumber, formData.noComplement ? '' : formData.addressComplement]
+      [
+        [formData.street, formData.houseNumber].filter(Boolean).join(', '),
+        formData.noComplement ? '' : formData.addressComplement,
+        formData.neighborhood,
+        [formData.city, formData.state].filter(Boolean).join(' - '),
+        formData.cep ? `CEP ${formData.cep}` : '',
+      ]
         .filter(Boolean)
-        .join(', ');
+        .join(' • ');
 
     const paymentLabel =
       formData.paymentMethod === 'credit'
@@ -374,23 +477,53 @@ const OrderPage = () => {
     const customerEmail = (formData as any).email ?? null;
     const eventDate = (formData as any).eventDate ?? (formData as any).event_date ?? null;
     const orderNote = (formData as any).note ?? (formData as any).observation ?? null;
+    const noteWithCheckoutDetails = [
+      orderNote,
+      addressLine ? `Endereço: ${addressLine}` : null,
+      `Pagamento: ${paymentLabel}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const orderId = createPublicUuid();
 
-    // ✅ AQUI: grava o pedido com ANON
-    const { data: order, error: orderError } = await supabaseAnon
-      .from('orders')
-      .insert({
-        customer_name: formData.name,
-        customer_phone: formData.phone,
-        customer_email: customerEmail || null,
-        event_date: eventDate || null,
-        note: orderNote || null,
-        status: 'pending',
-        total_cents: totalCents,
-      })
-      .select('id')
-      .single();
+    const baseOrderPayload = {
+      id: orderId,
+      customer_name: formData.name,
+      customer_phone: formData.phone,
+      customer_email: customerEmail || null,
+      event_date: eventDate || null,
+      note: noteWithCheckoutDetails || null,
+      status: 'pending',
+      total_cents: totalCents,
+      payment_method: formData.paymentMethod,
+      payment_status: 'pending',
+      payment_due: true,
+    };
 
-    if (orderError || !order) {
+    const addressOrderPayload = {
+      ...baseOrderPayload,
+      customer_address: addressLine || null,
+      address_street: formData.street?.trim() || null,
+      address_number: formData.houseNumber?.trim() || null,
+      address_complement:
+        formData.noComplement || !formData.addressComplement?.trim() ? null : formData.addressComplement.trim(),
+      address_neighborhood: formData.neighborhood?.trim() || null,
+      address_city: formData.city?.trim() || null,
+      address_state: formData.state?.trim() || null,
+      address_cep: formData.cep?.trim() || null,
+      address_latitude: typeof formData.addressLatitude === 'number' ? formData.addressLatitude : null,
+      address_longitude: typeof formData.addressLongitude === 'number' ? formData.addressLongitude : null,
+      address_source: formData.addressSource || null,
+    };
+
+    let { error: orderError } = await insertPublicRows<null>('orders', addressOrderPayload);
+
+    if (orderError?.code === 'PGRST204' || orderError?.code === '42703') {
+      const retry = await insertPublicRows<null>('orders', baseOrderPayload);
+      orderError = retry.error;
+    }
+
+    if (orderError) {
       if (import.meta.env.DEV && orderError) {
         console.error('Erro ao criar pedido', {
           message: orderError.message,
@@ -399,15 +532,17 @@ const OrderPage = () => {
           code: (orderError as any)?.code,
         });
       }
-      throw (orderError ?? new Error('Não foi possível registrar o pedido.'));
+      throw orderError;
     }
 
     if (cartItems.length > 0) {
-      const itemsPayload = cartItems.map((item) => {
+      const itemIds = cartItems.map(() => createPublicUuid());
+      const itemsPayload = cartItems.map((item, index) => {
         const unitPriceCents = item.unit_price_cents ?? Math.round(item.price * 100);
         const subtotalCents = Math.round(unitPriceCents * item.quantity);
         return {
-          order_id: order.id,
+          id: itemIds[index],
+          order_id: orderId,
           product_id: item.product_id ?? null,
           product_option_id: (item as any).option_id ?? null,
           quantity: item.quantity,
@@ -422,11 +557,7 @@ const OrderPage = () => {
         };
       });
 
-      // ✅ AQUI: grava items com ANON
-      const { data: insertedItems, error: itemsError } = await supabaseAnon
-        .from('order_items')
-        .insert(itemsPayload)
-        .select('id, order_id, product_id, product_option_id');
+      const { error: itemsError } = await insertPublicRows<null>('order_items', itemsPayload);
 
       if (itemsError) {
         if (import.meta.env.DEV) {
@@ -448,7 +579,7 @@ const OrderPage = () => {
 
       for (let index = 0; index < cartItems.length; index += 1) {
         const item = cartItems[index];
-        const insertedItemId = (insertedItems ?? [])[index]?.id;
+        const insertedItemId = itemIds[index];
         if (!insertedItemId || !item.details?.length || !item.product_id) continue;
 
         const { data: fields } = await supabase
@@ -472,10 +603,7 @@ const OrderPage = () => {
       }
 
       if (detailRows.length > 0) {
-        // ✅ AQUI: grava details com ANON
-        const { error: detailsError } = await supabaseAnon
-          .from('order_item_details')
-          .insert(detailRows);
+        const { error: detailsError } = await insertPublicRows<null>('order_item_details', detailRows);
 
         if (detailsError) {
           if (import.meta.env.DEV) {
@@ -506,276 +634,460 @@ const OrderPage = () => {
 
   const cartTotal = cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   const cartTotalLabel = `R$ ${cartTotal.toFixed(2).replace('.', ',')}`;
+  const hasCart = cartItems.length > 0;
+  const bottomPadClass = bottomBarVisible ? 'pb-40 md:pb-44' : 'pb-12';
+  const footerPaddingClass = bottomBarVisible ? 'pb-40 md:pb-44' : '';
+  const overlayType = selectedProduct ? 'product' : isCheckoutOpen ? 'checkout' : null;
 
-  const getProductsByCategory = (category: CategoryKey) => products.filter(product => product.category === category);
-
-  const categoryBackgrounds = useMemo(() => {
-    const map: Record<CategoryKey, string[]> = {
-      packaging: [],
-      party: [],
-      cake: [],
-    };
-
-    (['packaging', 'party', 'cake'] as const).forEach((cat) => {
-      const uniqueImages = Array.from(
-        new Set(
-          products
-            .filter((p) => p.category === cat && p.image)
-            .map((p) => p.image)
-        )
-      );
-      map[cat] = uniqueImages.slice(0, 5);
+  const getProductsByCategory = (category: Category) =>
+    products.filter((product) => {
+      if (category.id && product.categoryId) return product.categoryId === category.id;
+      if (category.slug && product.categorySlug) return product.categorySlug === category.slug;
+      return false;
     });
 
-    return map;
-  }, [products]);
+  const categoryProductCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    categories.forEach((category) => {
+      counts.set(category.id, getProductsByCategory(category).length);
+    });
+    return counts;
+  }, [categories, products]);
+
+  // Sincroniza navegação do navegador (botão voltar) com a categoria selecionada
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      popStateRef.current = true;
+      window.setTimeout(() => {
+        popStateRef.current = false;
+      }, 0);
+
+      const nextId = (event.state as any)?.orderCategoryId ?? null;
+      const nextOverlay = (event.state as any)?.orderOverlay ?? null;
+
+      if (!nextOverlay) {
+        setProductClosing(false);
+        setEditingIndex(null);
+        setSelectedProduct(null);
+        setIsCheckoutOpen(false);
+      } else if (nextOverlay === 'checkout') {
+        setProductClosing(false);
+        setEditingIndex(null);
+        setSelectedProduct(null);
+        setIsCheckoutOpen(true);
+      } else if (nextOverlay === 'product') {
+        setIsCheckoutOpen(false);
+        setSelectedProduct(lastSelectedProductRef.current ?? null);
+      }
+
+      if (!nextId) {
+        setActiveCategory(null);
+        return;
+      }
+      const match = categories.find((category) => category.id === nextId) ?? null;
+      setActiveCategory(match);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [categories]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setBgIndexes((prev) => ({
-        packaging: categoryBackgrounds.packaging.length > 0
-          ? (prev.packaging + 1) % categoryBackgrounds.packaging.length
-          : 0,
-        party: categoryBackgrounds.party.length > 0
-          ? (prev.party + 1) % categoryBackgrounds.party.length
-          : 0,
-        cake: categoryBackgrounds.cake.length > 0
-          ? (prev.cake + 1) % categoryBackgrounds.cake.length
-          : 0,
-      }));
-    }, BACKGROUND_ROTATION_MS);
+    if (popStateRef.current) return;
+    const state = window.history.state ?? {};
+    const currentId = state.orderCategoryId ?? null;
+    if (activeCategory?.id && currentId !== activeCategory.id) {
+      window.history.pushState({ ...state, orderCategoryId: activeCategory.id }, '');
+    } else if (!activeCategory && currentId) {
+      window.history.pushState({ ...state, orderCategoryId: null }, '');
+    }
+  }, [activeCategory]);
 
-    const kickoff = setTimeout(() => {
-      setBgIndexes((prev) => ({
-        packaging: categoryBackgrounds.packaging.length > 0
-          ? (prev.packaging + 1) % categoryBackgrounds.packaging.length
-          : 0,
-        party: categoryBackgrounds.party.length > 0
-          ? (prev.party + 1) % categoryBackgrounds.party.length
-          : 0,
-        cake: categoryBackgrounds.cake.length > 0
-          ? (prev.cake + 1) % categoryBackgrounds.cake.length
-          : 0,
-      }));
-    }, Math.min(2500, BACKGROUND_ROTATION_MS / 2));
+  useEffect(() => {
+    if (popStateRef.current) return;
+    if (!overlayType) return;
+    const state = window.history.state ?? {};
+    if (state.orderOverlay !== overlayType) {
+      window.history.pushState({ ...state, orderOverlay: overlayType }, '');
+    }
+  }, [overlayType]);
 
-    return () => {
-      clearInterval(interval);
-      clearTimeout(kickoff);
-    };
-  }, [categoryBackgrounds]);
+  useEffect(() => {
+    const stateId = (window.history.state as any)?.orderCategoryId;
+    if (!stateId || activeCategory) return;
+    const match = categories.find((category) => category.id === stateId) ?? null;
+    if (match) {
+      setActiveCategory(match);
+    }
+  }, [activeCategory, categories]);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      lastSelectedProductRef.current = selectedProduct;
+    }
+  }, [selectedProduct]);
+
+  const handleEditCartItem = (index: number) => {
+    const item = cartItems[index];
+    if (!item) return;
+    const byId = item.product_id
+      ? products.find((product) => product.id === item.product_id)
+      : undefined;
+    const product =
+      byId ?? products.find((product) => product.name === item.name) ?? null;
+
+    if (!product) return;
+    setEditingIndex(index);
+    setCheckoutPreserveState(true);
+    setIsCheckoutOpen(false);
+    handleOpenProduct(product);
+  };
+
+  const handleOpenProduct = (product: ProductOption) => {
+    lastSelectedProductRef.current = product;
+    if (productCloseTimerRef.current) {
+      window.clearTimeout(productCloseTimerRef.current);
+      productCloseTimerRef.current = null;
+    }
+    setProductClosing(false);
+    setSelectedProduct(product);
+  };
+
+  const handleCloseProduct = () => {
+    if (productCloseTimerRef.current) {
+      window.clearTimeout(productCloseTimerRef.current);
+      productCloseTimerRef.current = null;
+    }
+    setProductClosing(true);
+    if (editingIndex !== null) {
+      setEditingIndex(null);
+    }
+    const state = window.history.state ?? {};
+    productCloseTimerRef.current = window.setTimeout(() => {
+      if (state.orderOverlay) {
+        window.history.back();
+        return;
+      }
+      setProductClosing(false);
+      setSelectedProduct(null);
+      productCloseTimerRef.current = null;
+    }, 220);
+  };
+
+  const handleOpenCheckout = () => {
+    setCheckoutPreserveState(false);
+    setIsCheckoutOpen(true);
+  };
+
+  const handleCloseCheckout = () => {
+    setCheckoutPreserveState(false);
+    const state = window.history.state ?? {};
+    if (state.orderOverlay) {
+      window.history.back();
+      return;
+    }
+    setIsCheckoutOpen(false);
+  };
+
+  const handleBackToCategories = () => {
+    if (!activeCategory) return;
+    const state = window.history.state ?? {};
+    if (state.orderCategoryId) {
+      window.history.back();
+      return;
+    }
+    setActiveCategory(null);
+  };
 
   const formatPrice = (price: number) => `R$ ${price.toFixed(2).replace('.', ',')}`;
+  const activeProducts = activeCategory ? getProductsByCategory(activeCategory) : [];
 
   return (
-    <div className="min-h-screen bg-background flex flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-background flex flex-col overflow-x-hidden">
       {showSuccessMessage && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
           Pedido enviado com sucesso! Aguarde nosso contato.
         </div>
       )}
 
-      <main className="min-h-screen flex-1 flex flex-col overflow-hidden">
-        <div className="container mx-auto px-4 h-full flex flex-col">
-          <h1 className="sr-only">
-            FAÇA SUA ENCOMENDA
-          </h1>
-
-          {!activeCategory && (
-            <div className="text-center mt-6 mb-2">
-              <h2 className="font-bebas text-4xl md:text-5xl text-primary mb-1">
-                FAÇA SUA ENCOMENDA
-              </h2>
-              <p className="text-xs md:text-sm uppercase tracking-[0.3em] text-white/80">
-                Toque para explorar
-              </p>
+      <header className="fixed top-0 left-0 right-0 z-40">
+        <div className="bg-black/70 backdrop-blur-xl border-b border-white/10">
+          <div className="container mx-auto px-4 py-3">
+            <div
+              key={activeCategory ? activeCategory.id : 'categories'}
+              className="relative w-full flex items-center justify-center gap-3 fade-in"
+            >
+              <img
+                src="/logo.svg"
+                alt="Sweet Child"
+                className="h-11 w-auto object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = '/logo.png';
+                }}
+              />
+              {activeCategory && (
+                <span className="text-sm md:text-base font-semibold text-white uppercase tracking-[0.18em] text-center">
+                  {activeCategory.name}
+                </span>
+              )}
+              <a
+                href="/admin"
+                className="absolute right-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/35 transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                aria-label="Acessar painel admin"
+                title="Admin"
+              >
+                <FaUserShield size={14} />
+              </a>
             </div>
-          )}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col pt-20 md:pt-24">
+        <div className="container mx-auto flex w-full flex-1 flex-col">
+          <h1 className="sr-only">FAÇA SUA ENCOMENDA</h1>
+
+          <div className="mt-3 mb-5 px-4 md:mt-8 md:mb-8">
+            {activeCategory ? (
+              <div className="mx-auto flex max-w-3xl flex-col items-center gap-2 text-center">
+                <span className="rounded-full border border-primary/30 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                  Categoria selecionada
+                </span>
+                <h2 className="font-bebas text-4xl leading-none tracking-wide text-white md:text-6xl">
+                  {activeCategory.name}
+                </h2>
+                <p className="max-w-2xl text-sm leading-relaxed text-white/70 md:text-base">
+                  {activeCategory.description?.trim() ? activeCategory.description : 'Escolha os produtos e personalize seu pedido.'}
+                </p>
+              </div>
+            ) : (
+              <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center">
+                <span className="rounded-full border border-primary/35 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+                  Encomendas
+                </span>
+                <h2 className="font-bebas text-5xl leading-none tracking-wide text-white md:text-7xl">
+                  Escolha uma categoria
+                </h2>
+               
+              </div>
+            )}
+          </div>
 
           {!activeCategory && (
-            <section className="flex-1 flex flex-col h-full overflow-hidden min-h-[calc(100vh-150px)]">
-              <div className="grid grid-rows-3 md:grid-rows-1 md:grid-cols-3 gap-3 md:gap-6 flex-1 min-h-0 h-full">
-                {(['packaging', 'party', 'cake'] as const).map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setActiveCategory(cat);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="group relative rounded-[26px] overflow-hidden shadow-2xl border-2 border-primary/50 hover:-translate-y-1 transition-all duration-500 flex items-center justify-center w-full h-full min-h-[26vh] md:min-h-0"
-                  >
-                    <div className="absolute inset-0">
-                      {categoryBackgrounds[cat].length > 0 ? (
-                        categoryBackgrounds[cat].map((url, idx) => (
-                          <div
-                            key={url}
-                            className="absolute inset-0"
-                            style={{
-                              backgroundImage: `url(${url})`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                              filter: 'saturate(1.05) brightness(1.05)',
-                              opacity: bgIndexes[cat] % categoryBackgrounds[cat].length === idx ? 1 : 0,
-                              transition: `opacity ${BACKGROUND_FADE_MS}ms ease-in-out`,
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-black to-gray-900" />
-                      )}
-                    </div>
+            <section className={`flex-1 flex flex-col ${bottomPadClass} fade-in`}>
+              {categoriesLoading && (
+                <div className="flex-1 flex items-center justify-center text-white/70 text-sm md:text-base">
+                  Carregando categorias...
+                </div>
+              )}
 
-                    <div className="relative z-10 w-full h-full flex items-end">
-                      <div className="relative rounded-[14px] px-5 py-3 bg-white/12 border border-white/30 backdrop-blur-xl shadow-[0_14px_50px_rgba(0,0,0,0.32)] max-w-[200px] overflow-hidden ml-3 mb-3 md:ml-5 md:mb-5 text-left">
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/30 via-white/8 to-white/0 opacity-55" />
-                        <div className="pointer-events-none absolute -left-16 -top-20 h-32 w-32 rounded-full bg-white/18 blur-3xl" />
-                        <div className="pointer-events-none absolute -right-14 bottom-[-50px] h-28 w-28 rounded-full bg-primary/25 blur-3xl opacity-60" />
-                        <h2 className="relative font-bebas text-2xl md:text-3xl text-white leading-none text-left drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                          {CATEGORY_LABELS[cat]}
-                        </h2>
+              {!categoriesLoading && (categoriesError || categories.length === 0) && (
+                <div className="flex-1 flex flex-col items-center justify-center text-center text-white/70 gap-2">
+                  <p className="text-base md:text-lg font-semibold text-white">Nenhuma categoria disponível</p>
+                  <p className="text-sm md:text-base max-w-md">
+                    {categoriesError ?? 'Em breve teremos novidades por aqui.'}
+                  </p>
+                </div>
+              )}
+
+              {!categoriesLoading && !categoriesError && categories.length > 0 && (
+                <div className="grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 md:gap-5 lg:grid-cols-3 lg:px-0">
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => {
+                        setActiveCategory(category);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="group flex min-h-[260px] flex-col overflow-hidden rounded-lg border border-stone-200 bg-[#fbfaf9] text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_70px_rgba(255,0,127,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
+                      <div className="relative h-36 w-full overflow-hidden bg-stone-100 md:h-44">
+                        {category.image_url ? (
+                          <img src={category.image_url} alt={category.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/12 via-white to-stone-100">
+                            <img
+                              src="/logo.svg"
+                              alt=""
+                              className="h-16 w-auto opacity-70"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = '/logo.png';
+                              }}
+                            />
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/35 to-transparent" />
                       </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      <div className="flex flex-1 flex-col gap-3 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-lg font-extrabold leading-tight text-stone-950 md:text-xl">
+                            {category.name}
+                          </h3>
+                          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+                            {categoryProductCounts.get(category.id) ?? 0}
+                          </span>
+                        </div>
+                        <p
+                          className="text-sm leading-relaxed text-stone-600"
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {category.description ?? 'Sem descrição disponível.'}
+                        </p>
+                        <span className="mt-auto inline-flex items-center justify-between border-t border-stone-200 pt-3 text-sm font-bold text-primary">
+                          Ver produtos
+                          <FaPlus size={12} className="transition group-hover:rotate-90" />
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
           {activeCategory && (
-            <section className="flex-1 flex flex-col pb-10 overflow-y-auto">
-              <div className="flex flex-col items-center gap-3 mb-6 text-center mt-8 md:mt-10">
-                <span className="px-4 py-1 rounded-full bg-primary text-white text-xs uppercase tracking-[0.25em]">
-                  Categoria selecionada
-                </span>
-                <h2 className="font-bebas text-4xl text-primary leading-none">
-                  {CATEGORY_LABELS[activeCategory]}
-                </h2>
-              </div>
+            <section className={`flex-1 flex flex-col ${bottomPadClass} fade-in`}>
+              {activeProducts.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center text-white/70 gap-2">
+                  <p className="text-base md:text-lg font-semibold text-white">Nenhum produto nesta categoria</p>
+                  <p className="text-sm md:text-base max-w-md">
+                    Em breve teremos novidades por aqui. Escolha outra categoria.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:gap-6">
+                  {activeProducts.map((product, index) => {
+                    const hasSizes = product.requiresSize || (product.sizeOptions?.length ?? 0) > 0;
+                    const isParty = product.categorySlug === 'party';
+                    const priceLabel = isParty
+                      ? `${formatPrice(product.basePrice)} cada`
+                      : hasSizes
+                        ? `A partir de ${formatPrice(product.basePrice)}`
+                        : formatPrice(product.basePrice);
+                    return (
+                      <div
+                        key={index}
+                        className="w-full max-w-5xl mx-auto rounded-2xl border-2 border-primary/40 bg-gradient-to-r from-primary/10 via-gray-900 to-gray-950 shadow-2xl overflow-hidden transition-transform hover:-translate-y-1"
+                      >
+                        <div className="flex flex-col md:flex-row gap-4 md:gap-6 p-5 md:p-8">
+                          <div className="w-full md:w-72 h-40 md:h-48 overflow-hidden rounded-xl bg-gray-800">
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                          </div>
 
-              {/* grid de produtos*/}
-              <div className="grid grid-cols-1 gap-4 md:gap-6">
-                {getProductsByCategory(activeCategory).map((product, index) => {
-                  const isCompact = activeCategory === 'packaging';
-                  const priceLabel = activeCategory === 'party'
-                    ? `${formatPrice(product.basePrice)} cada`
-                    : isCompact
-                      ? formatPrice(product.basePrice)
-                      : `A partir de ${formatPrice(product.basePrice)}`;
-                  return (
-                    <div
-                      key={index}
-                      className={`${isCompact ? 'max-w-3xl' : 'max-w-5xl'} w-full mx-auto rounded-2xl border-2 border-primary/50 ${isCompact ? 'bg-gray-900/85' : 'bg-gradient-to-r from-primary/12 via-gray-900 to-gray-900'} shadow-2xl overflow-hidden transition-transform hover:-translate-y-1`}
-                    >
-                      <div className="flex flex-col md:flex-row gap-4 md:gap-6 p-5 md:p-8">
-                        <div className={`${isCompact ? 'w-full md:w-48' : 'w-full md:w-72'} h-40 md:h-48 overflow-hidden rounded-xl bg-gray-800`}>
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex-1 flex flex-col gap-4">
-                          <div className="flex flex-col gap-2">
-                            <h3 className="text-white font-bold text-xl md:text-2xl leading-tight">
-                              {product.name}
-                            </h3>
-                            <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                              <p className="text-gray-200 text-sm md:text-base leading-relaxed">
+                          <div className="flex-1 flex flex-col gap-4">
+                            <div className="flex flex-col gap-3">
+                              <h3 className="text-primary font-bebas text-2xl md:text-3xl text-center uppercase tracking-[0.18em]">
+                                {product.name}
+                              </h3>
+                              <p className="text-gray-200 text-sm md:text-base leading-relaxed text-left">
                                 {product.description}
                               </p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {product.minQuantity && (
-                                <span className="text-xs text-primary bg-primary/10 border border-primary/40 px-3 py-1 rounded-full">
-                                  Mínimo: {product.minQuantity} unid.
-                                </span>
-                              )}
-                              {product.requiresSize && (
-                                <span className="text-xs text-gray-200 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
-                                  Tamanhos disponíveis
-                                </span>
-                              )}
-                              {product.requiresFlavor && (
-                                <span className="text-xs text-gray-200 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
-                                  Vários sabores
-                                </span>
-                              )}
-                            </div>
-                          </div>
 
-                          <div className="flex items-center justify-between gap-3 pt-1">
-                            <button
-                              onClick={() => setSelectedProduct(product)}
-                              className="inline-flex items-center justify-center gap-2 rounded-lg font-semibold shadow-lg transition-all px-4 py-3 bg-primary text-white hover:bg-pink-600"
-                            >
-                              <FaPlus size={14} />
-                              <span>Adicionar</span>
-                            </button>
-                            <span className="text-primary font-extrabold text-lg md:text-xl whitespace-nowrap">
-                              {priceLabel}
-                            </span>
+                            <div className="flex items-center justify-between gap-3 pt-1">
+                              <button
+                                onClick={() => handleOpenProduct(product)}
+                                className="inline-flex items-center justify-center gap-2 rounded-lg font-semibold shadow-lg transition-all px-4 py-3 bg-primary text-white hover:bg-pink-600"
+                              >
+                                <FaPlus size={14} />
+                                <span>Adicionar</span>
+                              </button>
+                              <span className="text-primary font-extrabold text-lg md:text-xl whitespace-nowrap">
+                                {priceLabel}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
         </div>
       </main>
 
-      {cartItems.length > 0 && (
-        <button
-          onClick={() => setIsCheckoutOpen(true)}
-          className="fixed bottom-6 right-6 md:bottom-8 md:right-8 w-16 h-16 rounded-full bg-primary text-white shadow-[0_10px_30px_rgba(255,0,127,0.35)] flex items-center justify-center transition-transform hover:scale-105 z-50"
-          aria-label="Abrir carrinho"
-        >
-          <FaShoppingCart size={22} />
-          <span className="absolute -top-2 -right-2 min-w-[2.5rem] px-2 h-7 rounded-full bg-white text-primary text-xs font-bold flex items-center justify-center shadow-md leading-none">
-            {cartTotalLabel}
-          </span>
-        </button>
-      )}
+      {bottomBarVisible && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 pb-4 md:pb-6">
+          <div className="container mx-auto px-4">
+            <div className="rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.45)] p-2 md:p-3 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!activeCategory) return;
+                  handleBackToCategories();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                disabled={!activeCategory}
+                className={`flex-1 flex items-center gap-3 rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-left text-white transition ${
+                  activeCategory ? 'hover:bg-white/10' : 'opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <FaArrowLeft size={18} />
+                <span className="flex flex-col leading-tight">
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-white/70">Voltar p/</span>
+                  <span className="text-sm md:text-base font-semibold">Categorias</span>
+                </span>
+              </button>
 
-      {activeCategory && (
-        <button
-          onClick={() => {
-            setActiveCategory(null);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          className="fixed bottom-6 left-6 md:bottom-8 md:left-8 w-16 h-16 rounded-full bg-primary text-white shadow-[0_10px_30px_rgba(255,0,127,0.35)] flex items-center justify-center transition-transform hover:scale-105 z-50"
-          aria-label="Voltar para as categorias"
-        >
-          <FaArrowLeft size={20} />
-        </button>
+              <button
+                type="button"
+                onClick={handleOpenCheckout}
+                disabled={!hasCart}
+                className={`flex-1 flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/20 px-4 py-3 text-left text-white transition ${
+                  hasCart ? 'hover:bg-primary/30' : 'opacity-60 cursor-not-allowed'
+                }`}
+              >
+                <FaShoppingCart size={18} className={hasCart ? '' : 'opacity-40'} />
+                <span className="flex-1 flex flex-col leading-tight">
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-white/70">Carrinho</span>
+                  <span className={`text-sm md:text-base font-semibold ${hasCart ? 'text-white' : 'text-white/50'}`}>
+                    {hasCart ? cartTotalLabel : '—'}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedProduct && (
         <ProductSelector
           product={selectedProduct}
           onAddToCart={addToCart}
-          onClose={() => setSelectedProduct(null)}
+          onClose={handleCloseProduct}
+          initialItem={editingIndex !== null ? cartItems[editingIndex] : undefined}
+          isClosing={productClosing}
         />
       )}
 
       <Checkout
         isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
+        onClose={handleCloseCheckout}
         cartItems={cartItems}
         onCompleteOrder={handleCompleteOrder}
         removeCartItem={(index) => setCartItems(prev => prev.filter((_, i) => i !== index))}
         updateItemQuantity={updateItemQuantity}
         clearCart={() => setCartItems([])}
+        onEditCartItem={handleEditCartItem}
+        preserveStateOnClose={checkoutPreserveState}
       />
 
-      {showFooter && <Footer />}
+      {showFooter && <Footer className={footerPaddingClass} />}
     </div>
   );
 };

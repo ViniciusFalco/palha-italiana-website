@@ -29,6 +29,13 @@ export interface FormData {
   noComplement: boolean;
   paymentMethod: 'pix' | 'credit' | 'debit';
   address?: string;
+  cep?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  addressLatitude?: number | null;
+  addressLongitude?: number | null;
+  addressSource?: 'mapbox' | 'viacep' | 'map' | 'manual' | '';
 }
 
 export interface CheckoutProps {
@@ -40,6 +47,8 @@ export interface CheckoutProps {
   clearCart?: () => void;
   updateItemQuantity?: (index: number, quantity: number) => void;
   updateItemQuantityWithPricing?: (id: string, quantity: number) => void;
+  onEditCartItem?: (index: number) => void;
+  preserveStateOnClose?: boolean;
 }
 
 export interface MenuItemProps {
@@ -66,7 +75,9 @@ export interface ProductOption {
   description: string;
   basePrice: number;
   image: string;
-  category: 'packaging' | 'party' | 'cake';
+  categoryId?: string | null;
+  categorySlug?: string | null;
+  categoryName?: string | null;
   sku?: string;
   requiresFlavor?: boolean;
   requiresCoverage?: boolean;

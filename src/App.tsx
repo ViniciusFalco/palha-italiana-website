@@ -1,16 +1,14 @@
 
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
 import { fetchProducts } from './lib/api/products';
 import RequireAdmin from './components/admin/RequireAdmin';
 import OrderPage from './pages/OrderPage';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminLayout from './pages/admin/AdminLayout';
-import DashboardPage from './pages/admin/DashboardPage';
-import FinanceDashboardPage from './pages/admin/FinanceDashboardPage';
 import OrdersPage from './pages/admin/OrdersPage';
 import ProductsPage from './pages/admin/ProductsPage';
-import ReceiptsPage from './pages/admin/ReceiptsPage';
+import WorkInProgressPage from './pages/admin/WorkInProgressPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage';
 
@@ -39,12 +37,12 @@ function App() {
             </RequireAdmin>
           }
         >
-          <Route index element={<DashboardPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="financeiro" element={<FinanceDashboardPage />} />
+          <Route index element={<Navigate to="/admin/pedidos" replace />} />
+          <Route path="dashboard" element={<WorkInProgressPage tabName="Dashboard" />} />
+          <Route path="financeiro" element={<WorkInProgressPage tabName="Financeiro" />} />
           <Route path="pedidos" element={<OrdersPage />} />
           <Route path="produtos" element={<ProductsPage />} />
-          <Route path="recibos" element={<ReceiptsPage />} />
+          <Route path="recibos" element={<WorkInProgressPage tabName="Recibos" />} />
         </Route>
       </Routes>
     </Router>

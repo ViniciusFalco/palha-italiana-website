@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AdminButton, AdminField, AdminInput } from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/auth/AuthProvider';
 
 export default function AdminLoginPage() {
+  const { isAdmin, loadingAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -11,6 +14,12 @@ export default function AdminLoginPage() {
   const navigate = useNavigate();
 
   const locationError = (location.state as { error?: string } | null)?.error ?? null;
+
+  useEffect(() => {
+    if (!loadingAuth && isAdmin) {
+      navigate('/admin', { replace: true });
+    }
+  }, [isAdmin, loadingAuth, navigate]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -38,37 +47,42 @@ export default function AdminLoginPage() {
   return (
     <div className="admin-login-page">
       <div className="admin-login-card">
-        <h1>Login do Admin</h1>
-        <p className="admin-login-subtitle">Acesse com email e senha autorizados</p>
+        <div className="admin-login-brand">
+          <img
+            src="/logo.svg"
+            alt="Sweet Child"
+            onError={(event) => {
+              event.currentTarget.src = '/logo.png';
+            }}
+          />
+        </div>
+        <h1>Login do painel</h1>
+
         <form className="admin-login-form" onSubmit={handleSubmit}>
-          <label className="admin-field">
-            <span>Email</span>
-            <input
+          <AdminField label="Email">
+            <AdminInput
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="admin-input"
               placeholder="admin@dominio.com"
               required
             />
-          </label>
-          <label className="admin-field">
-            <span>Senha</span>
-            <input
+          </AdminField>
+          <AdminField label="Senha">
+            <AdminInput
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="admin-input"
               placeholder="********"
               required
             />
-          </label>
+          </AdminField>
           {(error || locationError) && (
             <div className="admin-inline-error">{error ?? locationError}</div>
           )}
-          <button type="submit" className="admin-button" disabled={loading}>
+          <AdminButton type="submit" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
-          </button>
+          </AdminButton>
           <div className="admin-login-actions">
             <Link to="/admin/forgot-password" className="admin-login-link">
               Esqueci minha senha

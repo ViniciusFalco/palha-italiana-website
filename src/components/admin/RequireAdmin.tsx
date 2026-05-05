@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth/AuthProvider';
-import { supabase } from '../../lib/supabase';
-
-type AdminStatus = 'idle' | 'checking' | 'ready' | 'forbidden' | 'error';
 
 const SLOW_LOADING_MS = 8000;
 
@@ -11,37 +8,42 @@ type RequireAdminProps = {
   children: React.ReactNode;
 };
 
+const ACCESS_ERROR_BY_STATE = {
+  missing_profile:
+    'Seu usuario foi autenticado, mas ainda nao possui um profile em public.profiles.',
+  inactive: 'Sua conta esta inativa. Solicite reativacao ao administrador.',
+  forbidden: 'Sua conta nao possui permissao de admin para acessar o painel.',
+} as const;
+
 export default function RequireAdmin({ children }: RequireAdminProps) {
-  const { user, session, loadingAuth, authError, refreshSession, withAuthRetry } = useAuth();
-  const [status, setStatus] = useState<AdminStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { user, session, profile, accessState, isAdmin, loadingAuth, authError, refreshSession } = useAuth();
   const [slowLoading, setSlowLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
   const navigate = useNavigate();
-  const checkedUserIdRef = useRef<string | null>(null);
   const redirectingRef = useRef(false);
 
   const debugInfo = useMemo(
     () => ({
       userId: user?.id ?? null,
       hasSession: Boolean(session),
-      status,
+      profileRole: profile?.role ?? null,
+      accessState,
       slowLoading,
       authError,
     }),
-    [authError, session, slowLoading, status, user?.id]
+    [accessState, authError, profile?.role, session, slowLoading, user?.id]
   );
 
   useEffect(() => {
-    if (!loadingAuth) {
+    if (!loadingAuth && accessState !== 'loading') {
       setSlowLoading(false);
       return;
     }
 
     const timeout = window.setTimeout(() => setSlowLoading(true), SLOW_LOADING_MS);
     return () => window.clearTimeout(timeout);
-  }, [loadingAuth]);
+  }, [accessState, loadingAuth]);
 
   useEffect(() => {
     if (loadingAuth) return;
@@ -53,63 +55,28 @@ export default function RequireAdmin({ children }: RequireAdminProps) {
 
   useEffect(() => {
     if (loadingAuth || !user) return;
-    if (checkedUserIdRef.current === user.id && status === 'ready') return;
+    if (redirectingRef.current) return;
 
-    let aborted = false;
-    const checkProfile = async () => {
-      setStatus('checking');
-      setErrorMessage(null);
-      const { data, error } = await withAuthRetry(
-        () =>
-          supabase
-            .from('profiles')
-            .select('role, is_active')
-            .eq('id', user.id)
-            .maybeSingle(),
-        { label: 'admin-profile' }
-      );
-
-      if (aborted) return;
-      if (error) {
-        setStatus('error');
-        setErrorMessage('Falha ao verificar permissões.');
-        return;
-      }
-
-      const role = (data as any)?.role;
-      const isActive = (data as any)?.is_active;
-      const isAdmin = role === 'admin' && isActive === true;
-
-      if (!isAdmin) {
-        setStatus('forbidden');
-        setErrorMessage('Acesso negado');
-        navigate('/admin/login', { replace: true, state: { error: 'Acesso negado' } });
-        return;
-      }
-
-      checkedUserIdRef.current = user.id;
-      setStatus('ready');
-    };
-
-    checkProfile();
-    return () => {
-      aborted = true;
-    };
-  }, [loadingAuth, navigate, status, user, withAuthRetry]);
+    if (accessState === 'missing_profile' || accessState === 'inactive' || accessState === 'forbidden') {
+      redirectingRef.current = true;
+      navigate('/admin/login', {
+        replace: true,
+        state: { error: ACCESS_ERROR_BY_STATE[accessState] },
+      });
+    }
+  }, [accessState, loadingAuth, navigate, user]);
 
   const handleRetry = async () => {
     setRetrying(true);
-    setErrorMessage(null);
-    setStatus('idle');
     redirectingRef.current = false;
     await refreshSession('manual-retry');
     setRetrying(false);
   };
 
-  const showLoading = loadingAuth || status === 'idle' || status === 'checking';
+  const showLoading = loadingAuth || accessState === 'loading';
 
   if (showLoading && !slowLoading && !authError) {
-    return <div className="admin-auth-loading">Autenticando...</div>;
+    return <div className="admin-auth-loading">Validando sessao e permissoes...</div>;
   }
 
   if (showLoading && (slowLoading || authError)) {
@@ -122,8 +89,8 @@ export default function RequireAdmin({ children }: RequireAdminProps) {
         {import.meta.env.DEV && (
           <div className="admin-debug">
             <small>
-              sessão: {debugInfo.hasSession ? 'sim' : 'não'} | status: {debugInfo.status} | slow:{' '}
-              {debugInfo.slowLoading ? 'sim' : 'não'}
+              sessao: {debugInfo.hasSession ? 'sim' : 'nao'} | access: {debugInfo.accessState} | role:{' '}
+              {debugInfo.profileRole ?? 'n/a'} | slow: {debugInfo.slowLoading ? 'sim' : 'nao'}
             </small>
           </div>
         )}
@@ -131,17 +98,20 @@ export default function RequireAdmin({ children }: RequireAdminProps) {
     );
   }
 
-  if (status === 'forbidden') {
+  if (accessState === 'error') {
     return (
       <div className="admin-auth-loading">
-        <p>{errorMessage ?? 'Acesso negado'}</p>
-        <button
-          type="button"
-          className="admin-button"
-          onClick={() => navigate('/admin/login', { replace: true, state: { error: 'Acesso negado' } })}
-        >
-          Ir para login
+        <p>{authError ?? 'Falha ao autenticar.'}</p>
+        <button type="button" className="admin-button" onClick={handleRetry} disabled={retrying}>
+          {retrying ? 'Recarregando...' : 'Tentar novamente'}
         </button>
+        {import.meta.env.DEV && (
+          <div className="admin-debug">
+            <small>
+              userId: {debugInfo.userId ?? 'n/a'} | access: {debugInfo.accessState}
+            </small>
+          </div>
+        )}
       </div>
     );
   }
@@ -150,23 +120,7 @@ export default function RequireAdmin({ children }: RequireAdminProps) {
     return null;
   }
 
-  if (status === 'error') {
-    return (
-      <div className="admin-auth-loading">
-        <p>{errorMessage ?? 'Falha ao autenticar.'}</p>
-        <button type="button" className="admin-button" onClick={handleRetry} disabled={retrying}>
-          {retrying ? 'Recarregando...' : 'Tentar novamente'}
-        </button>
-        {import.meta.env.DEV && debugInfo.userId && (
-          <div className="admin-debug">
-            <small>userId: {debugInfo.userId}</small>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (status === 'ready') {
+  if (isAdmin) {
     return <>{children}</>;
   }
 

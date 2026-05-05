@@ -1,9 +1,13 @@
 
 import { FaWhatsapp, FaInstagram } from 'react-icons/fa';
 
-const Footer = () => {
+type FooterProps = {
+  className?: string;
+};
+
+const Footer = ({ className }: FooterProps) => {
   return (
-    <footer id="contato" className="bg-background py-8">
+    <footer id="contato" className={`bg-background py-8 ${className ?? ''}`}>
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row items-center justify-between">
           {/* Brand Logo */}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AdminButton, AdminField, AdminInput } from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
 
 type Message = {
@@ -62,6 +63,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className="admin-login-page">
       <div className="admin-login-card">
+        <p className="admin-page-kicker">Sweet Child admin</p>
         <h1>Esqueci minha senha</h1>
         <p className="admin-login-subtitle">
           Informe seu e-mail para receber o link de redefini\u00e7\u00e3o.
@@ -72,22 +74,20 @@ export default function ForgotPasswordPage() {
           </div>
         )}
         <form className="admin-login-form" onSubmit={handleSubmit}>
-          <label className="admin-field">
-            <span>Email</span>
-            <input
+          <AdminField label="Email">
+            <AdminInput
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="admin-input"
               placeholder="admin@dominio.com"
               autoComplete="email"
               required
               disabled={submitting}
             />
-          </label>
-          <button type="submit" className="admin-button" disabled={submitting}>
+          </AdminField>
+          <AdminButton type="submit" disabled={submitting}>
             {submitting ? 'Enviando...' : 'Enviar link'}
-          </button>
+          </AdminButton>
         </form>
         <div className="admin-login-actions">
           <Link to="/admin/login" className="admin-login-link">

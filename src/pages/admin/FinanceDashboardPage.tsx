@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  FaChartLine,
+  FaFileInvoiceDollar,
+  FaHourglassHalf,
+  FaWallet,
+} from 'react-icons/fa6';
+import {
+  AdminEmptyState,
+  AdminPageHeader,
+  AdminSkeleton,
+} from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth/AuthProvider';
 
@@ -106,8 +117,8 @@ const buildSkeletonList = (rows = 3) => (
   <ul className="dashboard-list">
     {Array.from({ length: rows }).map((_, index) => (
       <li key={`skeleton-${index}`} className="dashboard-item is-skeleton">
-        <div className="dashboard-skeleton-line" />
-        <div className="dashboard-skeleton-line short" />
+        <AdminSkeleton />
+        <AdminSkeleton className="short" />
       </li>
     ))}
   </ul>
@@ -213,15 +224,11 @@ export default function FinanceDashboardPage() {
 
   return (
     <div className="admin-page finance-page">
-      <div className="admin-page-header">
-        <div>
-          <p className="admin-page-kicker">Financeiro</p>
-          <h1 className="admin-page-title">Dashboard financeiro</h1>
-          <p className="admin-page-subtitle">
-            Acompanhe o fluxo do mes, pendencias e recibos de forma confiavel.
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader
+        kicker="Financeiro"
+        title="Dashboard financeiro"
+        subtitle="Receita do mes, pendencias e recibos em uma leitura mais limpa e segura."
+      />
 
       <section className="dashboard-grid finance-grid">
         <article className="dashboard-block dashboard-block-primary">
@@ -230,6 +237,9 @@ export default function FinanceDashboardPage() {
               <p className="dashboard-block-kicker">Mes atual</p>
               <h2 className="dashboard-block-title">Resumo do mes</h2>
             </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-admin-stroke/75 bg-white/75 text-primary shadow-admin-soft">
+              <FaWallet />
+            </span>
           </header>
           {loading ? (
             <div className="finance-summary">
@@ -262,11 +272,19 @@ export default function FinanceDashboardPage() {
               <p className="dashboard-block-kicker">Atencao</p>
               <h2 className="dashboard-block-title">Pendencias financeiras</h2>
             </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-admin-stroke/75 bg-white/75 text-primary shadow-admin-soft">
+              <FaHourglassHalf />
+            </span>
           </header>
           {loading ? (
             buildSkeletonList(4)
           ) : pendingPayments.length === 0 ? (
-            <div className="dashboard-empty">Nenhuma pendencia financeira</div>
+            <AdminEmptyState
+              compact
+              icon={<FaHourglassHalf />}
+              title="Nenhuma pendencia financeira"
+              description="Assim que houver pagamentos em aberto ou atrasados, eles aparecem aqui."
+            />
           ) : (
             <ul className="dashboard-list">
               {pendingPayments.map((order) => (
@@ -290,11 +308,19 @@ export default function FinanceDashboardPage() {
               <p className="dashboard-block-kicker">Mes atual</p>
               <h2 className="dashboard-block-title">Meios de pagamento no mes</h2>
             </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-admin-stroke/75 bg-white/75 text-primary shadow-admin-soft">
+              <FaChartLine />
+            </span>
           </header>
           {loading ? (
             buildSkeletonList(3)
           ) : paymentMethods.length === 0 ? (
-            <div className="dashboard-empty">Nenhum pagamento registrado no mes</div>
+            <AdminEmptyState
+              compact
+              icon={<FaChartLine />}
+              title="Nenhum pagamento no periodo"
+              description="Os meios de pagamento se consolidam aqui conforme os pedidos forem pagos."
+            />
           ) : (
             <ul className="dashboard-list">
               {paymentMethods.map((method) => (
@@ -317,11 +343,19 @@ export default function FinanceDashboardPage() {
               <h2 className="dashboard-block-title">Recibos</h2>
               <p className="finance-block-helper">Total emitidos no mes: {receiptsCount}</p>
             </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-admin-stroke/75 bg-white/75 text-primary shadow-admin-soft">
+              <FaFileInvoiceDollar />
+            </span>
           </header>
           {loading ? (
             buildSkeletonList(3)
           ) : recentReceipts.length === 0 ? (
-            <div className="dashboard-empty">Nenhum recibo emitido</div>
+            <AdminEmptyState
+              compact
+              icon={<FaFileInvoiceDollar />}
+              title="Nenhum recibo emitido"
+              description="Quando os recibos forem gerados, os ultimos documentos aparecerao aqui."
+            />
           ) : (
             <ul className="dashboard-list">
               {recentReceipts.map((receipt) => (

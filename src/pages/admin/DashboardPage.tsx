@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  FaBoxOpen,
+  FaClipboardCheck,
+  FaMoneyBillTrendUp,
+  FaStar,
+} from 'react-icons/fa6';
+import {
+  AdminEmptyState,
+  AdminPageHeader,
+  AdminSkeleton,
+} from '../../components/admin/AdminPrimitives';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth/AuthProvider';
 
@@ -83,6 +94,61 @@ const formatPaymentMethod = (value?: string | null) => {
   return PAYMENT_METHOD_LABELS[key] ?? value;
 };
 
+type DashboardPanelProps = {
+  emptyDescription: string;
+  emptyTitle: string;
+  icon: ReactNode;
+  kicker: string;
+  loading: boolean;
+  title: string;
+  toneClassName: string;
+  children: ReactNode;
+};
+
+function DashboardPanel({
+  children,
+  emptyDescription,
+  emptyTitle,
+  icon,
+  kicker,
+  loading,
+  title,
+  toneClassName,
+}: DashboardPanelProps) {
+  return (
+    <article className={`dashboard-block ${toneClassName}`}>
+      <header className="dashboard-block-header">
+        <div>
+          <p className="dashboard-block-kicker">{kicker}</p>
+          <h2 className="dashboard-block-title">{title}</h2>
+        </div>
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-admin-stroke/75 bg-white/75 text-primary shadow-admin-soft">
+          {icon}
+        </span>
+      </header>
+      {loading ? (
+        <ul className="dashboard-list">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <li key={`dashboard-skeleton-${index}`} className="dashboard-item is-skeleton">
+              <AdminSkeleton />
+              <AdminSkeleton className="short" />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        children || (
+          <AdminEmptyState
+            compact
+            description={emptyDescription}
+            icon={icon}
+            title={emptyTitle}
+          />
+        )
+      )}
+    </article>
+  );
+}
+
 export default function DashboardPage() {
   const { withAuthRetry } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -163,29 +229,23 @@ export default function DashboardPage() {
 
   return (
     <div className="admin-page dashboard-page">
-      <div className="admin-page-header">
-        <div>
-          <p className="admin-page-kicker">Visao geral</p>
-          <h1 className="admin-page-title">Dashboard operacional</h1>
-          <p className="admin-page-subtitle">
-            Veja rapidamente o que esta acontecendo agora e o que precisa de atencao.
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader
+        kicker="Visao geral"
+        title="Dashboard operacional"
+        subtitle=""
+      />
 
       <section className="dashboard-grid">
-        <article className="dashboard-block dashboard-block-primary">
-          <header className="dashboard-block-header">
-            <div>
-              <p className="dashboard-block-kicker">Prioridade maxima</p>
-              <h2 className="dashboard-block-title">Pedidos com entrega proxima</h2>
-            </div>
-          </header>
-          {loading ? (
-            <div className="dashboard-empty">Carregando...</div>
-          ) : deliveryToday.length === 0 ? (
-            <div className="dashboard-empty">Nenhum pedido com entrega proxima</div>
-          ) : (
+        <DashboardPanel
+          toneClassName="dashboard-block-primary"
+          kicker="Agenda"
+          title="Pedidos com entrega proxima"
+          icon={<FaStar />}
+          loading={loading}
+          emptyTitle="Nenhuma entrega critica no momento"
+          emptyDescription="Assim que um pedido em andamento se aproximar da data de entrega, ele aparecera aqui."
+        >
+          {deliveryToday.length > 0 ? (
             <ul className="dashboard-list">
               {deliveryToday.slice(0, MAX_ITEMS).map((order) => (
                 <li key={order.id} className="dashboard-item">
@@ -196,21 +256,19 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </article>
+          ) : null}
+        </DashboardPanel>
 
-        <article className="dashboard-block dashboard-block-warning">
-          <header className="dashboard-block-header">
-            <div>
-              <p className="dashboard-block-kicker">Atencao</p>
-              <h2 className="dashboard-block-title">Pedidos pendentes</h2>
-            </div>
-          </header>
-          {loading ? (
-            <div className="dashboard-empty">Carregando...</div>
-          ) : stalePending.length === 0 ? (
-            <div className="dashboard-empty">Nenhum pedido pendente para aprovacao</div>
-          ) : (
+        <DashboardPanel
+          toneClassName="dashboard-block-warning"
+          kicker="Atencao"
+          title="Pedidos pendentes"
+          icon={<FaClipboardCheck />}
+          loading={loading}
+          emptyTitle="Nada aguardando aprovacao"
+          emptyDescription="Os novos pedidos pendentes aparecerao aqui para voce destravar o fluxo rapidamente."
+        >
+          {stalePending.length > 0 ? (
             <ul className="dashboard-list">
               {stalePending.slice(0, MAX_ITEMS).map((order) => (
                 <li key={order.id} className="dashboard-item">
@@ -221,21 +279,19 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </article>
+          ) : null}
+        </DashboardPanel>
 
-        <article className="dashboard-block dashboard-block-success">
-          <header className="dashboard-block-header">
-            <div>
-              <p className="dashboard-block-kicker">Financeiro</p>
-              <h2 className="dashboard-block-title">Ultimos pagamentos realizados</h2>
-            </div>
-          </header>
-          {loading ? (
-            <div className="dashboard-empty">Carregando...</div>
-          ) : openPayments.length === 0 ? (
-            <div className="dashboard-empty">Nenhum pagamento registrado</div>
-          ) : (
+        <DashboardPanel
+          toneClassName="dashboard-block-success"
+          kicker="Financeiro"
+          title="Ultimos pagamentos realizados"
+          icon={<FaMoneyBillTrendUp />}
+          loading={loading}
+          emptyTitle="Nenhum pagamento registrado"
+          emptyDescription="Quando houver pagamentos confirmados, o resumo financeiro recente aparece aqui."
+        >
+          {openPayments.length > 0 ? (
             <ul className="dashboard-list">
               {openPayments.slice(0, MAX_ITEMS).map((order) => (
                 <li key={order.id} className="dashboard-item">
@@ -247,21 +303,19 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </article>
+          ) : null}
+        </DashboardPanel>
 
-        <article className="dashboard-block dashboard-block-success-soft">
-          <header className="dashboard-block-header">
-            <div>
-              <p className="dashboard-block-kicker">Producao</p>
-              <h2 className="dashboard-block-title">Pedidos concluidos</h2>
-            </div>
-          </header>
-          {loading ? (
-            <div className="dashboard-empty">Carregando...</div>
-          ) : finishedOrders.length === 0 ? (
-            <div className="dashboard-empty">Nenhum pedido concluido</div>
-          ) : (
+        <DashboardPanel
+          toneClassName="dashboard-block-success-soft"
+          kicker="Producao"
+          title="Pedidos concluidos"
+          icon={<FaBoxOpen />}
+          loading={loading}
+          emptyTitle="Sem pedidos concluidos agora"
+          emptyDescription="Os pedidos finalizados recentemente ficam reunidos aqui para uma leitura rapida."
+        >
+          {finishedOrders.length > 0 ? (
             <ul className="dashboard-list">
               {finishedOrders.slice(0, MAX_ITEMS).map((order) => (
                 <li key={order.id} className="dashboard-item">
@@ -272,8 +326,8 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </article>
+          ) : null}
+        </DashboardPanel>
       </section>
     </div>
   );

@@ -6,7 +6,10 @@ export type CatalogRow = {
   name: string;
   description: string | null;
   image_url: string | null;
-  category: 'packaging' | 'party' | 'cake';
+  category?: string | null;
+  category_id?: string | null;
+  category_slug?: string | null;
+  category_name?: string | null;
   min_quantity: number | null;
   requires_flavor: boolean;
   requires_coverage: boolean;
@@ -28,7 +31,9 @@ export type UIProduct = {
   name: string;
   description?: string;
   image: string;
-  category: 'packaging' | 'party' | 'cake';
+  categoryId?: string | null;
+  categorySlug?: string | null;
+  categoryName?: string | null;
   basePrice: number; // em centavos
   salePrice?: number; // em centavos
   minQuantity?: number;
@@ -42,34 +47,76 @@ export type UIProduct = {
 };
 
 export async function fetchCatalog(): Promise<UIProduct[]> {
-  const { data, error } = await supabase
-    .from('catalog_effective_prices_v')
-    .select(
-      [
-        'sku',
-        'name',
-        'description',
-        'image_url',
-        'category',
-        'min_quantity',
-        'requires_flavor',
-        'requires_coverage',
-        'requires_size',
-        'requires_ribbon_width',
-        'requires_ribbon_color',
-        'requires_form_color',
-        'option_key',
-        'option_name',
-        'effective_price_cents',
-        'base_price_cents',
-        'sale_price_cents',
-        'is_on_sale',
-        'product_id',
-      ].join(', ')
-    );
+  const baseSelect = [
+    'sku',
+    'name',
+    'description',
+    'image_url',
+    'category',
+    'min_quantity',
+    'requires_flavor',
+    'requires_coverage',
+    'requires_size',
+    'requires_ribbon_width',
+    'requires_ribbon_color',
+    'requires_form_color',
+    'option_key',
+    'option_name',
+    'effective_price_cents',
+    'base_price_cents',
+    'sale_price_cents',
+    'is_on_sale',
+    'product_id',
+  ].join(', ');
+
+  const extendedSelect = [
+    'sku',
+    'name',
+    'description',
+    'image_url',
+    'category',
+    'category_id',
+    'category_slug',
+    'category_name',
+    'min_quantity',
+    'requires_flavor',
+    'requires_coverage',
+    'requires_size',
+    'requires_ribbon_width',
+    'requires_ribbon_color',
+    'requires_form_color',
+    'option_key',
+    'option_name',
+    'effective_price_cents',
+    'base_price_cents',
+    'sale_price_cents',
+    'is_on_sale',
+    'product_id',
+  ].join(', ');
+
+  let data: unknown;
+  let error: any;
+
+  const viewName = 'catalog_effective_prices_with_category_v';
+  const fallbackViewName = 'catalog_effective_prices_v';
+
+  ({ data, error } = await supabase.from(viewName).select(extendedSelect));
+  if (error) {
+    const message = String(error?.message ?? '');
+    const shouldFallback =
+      message.includes('category_id') ||
+      message.includes('category_slug') ||
+      message.includes('category_name') ||
+      message.includes(viewName);
+    if (shouldFallback) {
+      const fallback = await supabase.from(fallbackViewName).select(baseSelect);
+      data = fallback.data;
+      error = fallback.error;
+    }
+  }
 
   if (error) throw error;
-  if (!data || data.length === 0) return [];
+  if (!Array.isArray(data) || data.length === 0) return [];
 
   const rows = Array.isArray(data) ? ((data as unknown) as CatalogRow[]) : [];
 
@@ -127,7 +174,9 @@ export async function fetchCatalog(): Promise<UIProduct[]> {
         name: meta.name,
         description: meta.description ?? undefined,
         image: meta.image_url ?? '',
-        category: meta.category,
+        categoryId: meta.category_id ?? null,
+        categorySlug: meta.category_slug ?? meta.category ?? null,
+        categoryName: meta.category_name ?? undefined,
         basePrice: minEffectiveCents / 100,
         minQuantity: meta.min_quantity ?? undefined,
         requiresFlavor: meta.requires_flavor,
@@ -148,7 +197,9 @@ export async function fetchCatalog(): Promise<UIProduct[]> {
         name: meta.name,
         description: meta.description ?? undefined,
         image: meta.image_url ?? '',
-        category: meta.category,
+        categoryId: meta.category_id ?? null,
+        categorySlug: meta.category_slug ?? meta.category ?? null,
+        categoryName: meta.category_name ?? undefined,
         basePrice: effective / 100,
         salePrice: salePriceCents ? salePriceCents / 100 : undefined,
         minQuantity: meta.min_quantity ?? undefined,
