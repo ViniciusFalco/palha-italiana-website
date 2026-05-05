@@ -1558,6 +1558,23 @@
 }
 
 @media (max-width: 760px) {
+  .admin-modal-backdrop-category.admin-modal-backdrop-full {
+    align-items: stretch;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .admin-modal-category {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
   .admin-modal-category .admin-modal-header {
     flex-direction: row;
     align-items: center;
@@ -1596,6 +1613,20 @@
     gap: 8px;
   }
 
+  .admin-modal-category .admin-modal-footer-fixed {
+    flex: 0 0 auto;
+    backdrop-filter: blur(10px);
+  }
+
+  .admin-modal-category .admin-modal-footer-mobile .admin-footer-actions {
+    display: flex;
+    width: 100%;
+  }
+
+  .admin-modal-category .admin-modal-footer-mobile .admin-button {
+    width: 100%;
+  }
+
   .admin-modal-product .admin-stepper {
     display: none;
   }
@@ -1607,7 +1638,9 @@
   .admin-modal-product .admin-modal-body-scroll,
   .admin-modal-category .admin-modal-body-scroll,
   .admin-modal-category .admin-modal-body {
+    flex: 1 1 auto;
     overscroll-behavior: contain;
+    overflow-y: auto;
     padding-bottom: 18px;
   }
 

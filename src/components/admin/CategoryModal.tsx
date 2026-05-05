@@ -302,9 +302,10 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
   if (!isOpen) return null;
 
   return (
-    <AdminModalBackdrop className="admin-modal-backdrop-category">
+    <AdminModalBackdrop className="admin-modal-backdrop-category" full={isMobile}>
       <AdminModal size="md" className="admin-modal-category">
         <AdminModalHeader
+          className={isMobile ? 'admin-modal-header-fixed' : undefined}
           subtitle="Categoria"
           title={isEditMode ? 'Editar categoria' : 'Nova categoria'}
           actions={
@@ -471,7 +472,7 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
           )}
         </AdminModalBody>
 
-        <AdminModalFooter>
+        <AdminModalFooter className={isMobile ? 'admin-modal-footer-fixed admin-modal-footer-mobile' : undefined}>
           {!isMobile && (
             <AdminButton variant="ghost" onClick={requestClose}>
               Cancelar
