@@ -14,14 +14,20 @@ const devLog = (label: string, payload?: Record<string, unknown>) => {
 };
 
 const resolveSiteUrl = () => {
-  const envUrl = import.meta.env.VITE_SITE_URL;
-  if (envUrl && typeof envUrl === 'string') {
-    return envUrl.replace(/\/$/, '');
+  const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const envUrl = typeof import.meta.env.VITE_SITE_URL === 'string' ? import.meta.env.VITE_SITE_URL.trim() : '';
+  const normalizedEnvUrl = envUrl.replace(/\/$/, '');
+  const normalizedRuntimeOrigin = runtimeOrigin.replace(/\/$/, '');
+
+  if (import.meta.env.PROD) {
+    if (normalizedEnvUrl && !/^https?:\/\/localhost(?::\d+)?$/i.test(normalizedEnvUrl)) {
+      return normalizedEnvUrl;
+    }
+
+    return normalizedRuntimeOrigin || 'https://palha-italiana-website.vercel.app';
   }
 
-  return import.meta.env.PROD
-    ? 'https://palha-italiana-website.vercel.app'
-    : 'http://localhost:5173';
+  return normalizedEnvUrl || normalizedRuntimeOrigin || 'http://localhost:5173';
 };
 
 export default function ForgotPasswordPage() {
