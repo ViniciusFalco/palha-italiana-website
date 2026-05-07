@@ -6,6 +6,27 @@ O projeto funciona como um **catálogo digital com fluxo de pedidos**, permitind
 
 Além da área pública para clientes, o sistema também conta com estrutura de **painel administrativo**, pensado para facilitar a gestão de produtos, categorias, pedidos e informações comerciais.
 
+## 📱 Preview do projeto
+
+<p align="center">
+  <img src="docs/images/catalog-category-mobile.png" alt="Tela de categorias do catálogo mobile" width="220" />
+  <img src="docs/images/catalog-product-mobile.png" alt="Tela de produtos do catálogo mobile" width="220" />
+  <img src="docs/images/product-selector-mobile.png" alt="Tela de seleção de produto mobile" width="220" />
+</p>
+
+<p align="center">
+  <img src="docs/images/product-selector-2-mobile.png" alt="Tela de personalização do produto mobile" width="220" />
+  <img src="docs/images/Checkout-mobile.png" alt="Tela inicial do checkout mobile" width="220" />
+  <img src="docs/images/Checkout-part2-mobile.png" alt="Tela de continuação do checkout mobile" width="220" />
+</p>
+
+<p align="center">
+  <img src="docs/images/orders-mobile.png" alt="Tela de pedidos no painel administrativo mobile" width="220" />
+  <img src="docs/images/sidebar-mobile.png" alt="Menu lateral do painel administrativo mobile" width="220" />
+  <img src="docs/images/product_category-mobile.png" alt="Tela de categoria de produto mobile" width="220" />
+</p>
+
+
 ---
 
 ## 🔗 Deploy
