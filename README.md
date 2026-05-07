@@ -8,56 +8,79 @@ Além da área pública para clientes, o sistema também conta com estrutura de 
 
 ## 📱 Preview do projeto
 
-Uma visão geral das principais telas do sistema, incluindo a experiência do cliente, fluxo de checkout e painel administrativo.
+> Interface **mobile-first** pensada para conversão — do catálogo ao WhatsApp em menos de 1 minuto.
 
 ---
 
 ### 🛍️ Experiência do cliente
 
-<p align="center">
-  <img src="docs/images/catalog-category-mobile.png" alt="Tela de categorias do catálogo mobile" width="220" />
-  <img src="docs/images/catalog-product-mobile.png" alt="Tela de produtos do catálogo mobile" width="220" />
-  <img src="docs/images/product-selector-mobile.png" alt="Tela de seleção de produto mobile" width="220" />
-</p>
-
-<p align="center">
-  <sub><b>Catálogo por categorias</b></sub> •
-  <sub><b>Listagem de produtos</b></sub> •
-  <sub><b>Seleção e personalização do produto</b></sub>
-</p>
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/catalog-category-mobile.png" width="200" alt="Catálogo por categorias"/><br/>
+      <b>Catálogo por categorias</b><br/>
+      <sub>Navegação intuitiva entre as linhas de produtos</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/catalog-product-mobile.png" width="200" alt="Listagem de produtos"/><br/>
+      <b>Listagem de produtos</b><br/>
+      <sub>Cards com foto, descrição e opções de personalização</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/product-selector-mobile.png" width="200" alt="Seleção do produto"/><br/>
+      <b>Seleção e personalização</b><br/>
+      <sub>Modal com opções, quantidade e adicionais</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
-### 🧾 Fluxo de checkout
+### 🧾 Checkout
 
-<p align="center">
-  <img src="docs/images/product-selector-2-mobile.png" alt="Tela complementar de personalização do produto mobile" width="220" />
-  <img src="docs/images/Checkout-mobile.png" alt="Tela inicial do checkout mobile" width="220" />
-  <img src="docs/images/Checkout-part2-mobile.png" alt="Tela final do checkout mobile" width="220" />
-</p>
-
-<p align="center">
-  <sub><b>Detalhes do pedido</b></sub> •
-  <sub><b>Preenchimento de entrega</b></sub> •
-  <sub><b>Resumo final e envio</b></sub>
-</p>
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/product-selector-2-mobile.png" width="200" alt="Detalhes do pedido"/><br/>
+      <b>Resumo do carrinho</b><br/>
+      <sub>Revisão de itens antes de avançar</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/Checkout-mobile.png" width="200" alt="Dados de entrega"/><br/>
+      <b>Dados de entrega</b><br/>
+      <sub>Endereço com validação de área de cobertura via Mapbox</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/Checkout-part2-mobile.png" width="200" alt="Confirmação"/><br/>
+      <b>Confirmação e envio</b><br/>
+      <sub>Pedido salvo no Supabase e disparado no WhatsApp</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
 ### ⚙️ Painel administrativo
 
-<p align="center">
-  <img src="docs/images/orders-mobile.png" alt="Tela de pedidos no painel administrativo mobile" width="220" />
-  <img src="docs/images/sidebar-mobile.png" alt="Menu lateral do painel administrativo mobile" width="220" />
-  <img src="docs/images/product_category-mobile.png" alt="Tela de produtos e categorias no painel administrativo mobile" width="220" />
-</p>
-
-<p align="center">
-  <sub><b>Gestão de pedidos</b></sub> •
-  <sub><b>Navegação do painel</b></sub> •
-  <sub><b>Produtos e categorias</b></sub>
-</p>
-
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/orders-mobile.png" width="200" alt="Gestão de pedidos"/><br/>
+      <b>Gestão de pedidos</b><br/>
+      <sub>Acompanhamento em tempo real dos pedidos recebidos</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/sidebar-mobile.png" width="200" alt="Menu do painel"/><br/>
+      <b>Navegação do painel</b><br/>
+      <sub>Sidebar com acesso às áreas administrativas</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/product_category-mobile.png" width="200" alt="Produtos e categorias"/><br/>
+      <b>Produtos e categorias</b><br/>
+      <sub>Cadastro, edição e organização do cardápio</sub>
+    </td>
+  </tr>
+</table>
 ---
 
 ## 🔗 Deploy
