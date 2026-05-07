@@ -1,11 +1,27 @@
-# 🍰 Palha Italiana Website | Sweet Child
+<p align="center">
+  <img src="public/logo.png" alt="Logo Sweet Child" width="90" />
+</p>
 
-Sistema web desenvolvido para a **Sweet Child**, uma confeitaria artesanal especializada em palhas italianas, doces personalizados e encomendas para eventos.
+<h1 align="center">Palha Italiana Website | Sweet Child</h1>
 
-O projeto funciona como um **catálogo digital com fluxo de pedidos**, permitindo que clientes visualizem produtos, adicionem itens ao carrinho, preencham seus dados e enviem o pedido diretamente pelo WhatsApp.
+<p align="center">
+  Sistema web desenvolvido para a <strong>Sweet Child</strong>, uma confeitaria artesanal especializada em palhas italianas, doces personalizados e encomendas para eventos.
+</p>
 
-Além da área pública para clientes, o sistema também conta com estrutura de **painel administrativo**, pensado para facilitar a gestão de produtos, categorias, pedidos e informações comerciais.
+<p align="center">
+  O projeto funciona como um <strong>catálogo digital com fluxo de pedidos</strong>, permitindo que clientes visualizem produtos, adicionem itens ao carrinho, preencham seus dados e enviem o pedido diretamente pelo WhatsApp.
+</p>
 
+<p align="center">
+  <a href="https://palha-italiana-website.vercel.app">Deploy</a> •
+  <a href="#-preview-do-projeto">Preview</a> •
+  <a href="#-tecnologias-utilizadas">Tecnologias</a> •
+  <a href="#-funcionalidades">Funcionalidades</a>
+</p>
+
+---
+
+Além da área pública para clientes, o sistema também conta com estrutura de <strong>painel administrativo</strong>, pensado para facilitar a gestão de produtos, categorias, pedidos e informações comerciais.
 ## 📱 Preview do projeto
 
 > Interface **mobile-first** pensada para conversão — do catálogo ao WhatsApp em menos de 1 minuto.
