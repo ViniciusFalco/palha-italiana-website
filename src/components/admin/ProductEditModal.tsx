@@ -73,6 +73,17 @@ type ValidationToast = {
   message: string;
 };
 
+type ProductSaveRpcResult = {
+  product_id: string;
+};
+
+type SupabaseLikeError = {
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+  message?: string;
+};
+
 type MobileQuantityFormState = {
   errorMessage: string | null;
   isOpen: boolean;
@@ -137,7 +148,53 @@ const createInitialMobileQuestionFormState = (): MobileQuestionFormState => ({
 const isValidationError = (error: unknown): error is Error =>
   error instanceof Error && error.name === 'ValidationError';
 
+function getProductSaveErrorMessage(error: unknown): string {
+  const fallback = 'Não foi possível salvar o produto. Tente novamente.';
+  if (!error) return fallback;
+
+  const supabaseError = error as SupabaseLikeError;
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : supabaseError.message ?? supabaseError.details ?? fallback;
+  const message = String(rawMessage);
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    supabaseError.code === '23505' ||
+    normalizedMessage.includes('duplicate key') ||
+    normalizedMessage.includes('sku já está em uso')
+  ) {
+    return 'SKU já está em uso. Escolha outro valor.';
+  }
+
+  if (
+    supabaseError.code === '42501' ||
+    normalizedMessage.includes('permission denied') ||
+    normalizedMessage.includes('apenas administradores')
+  ) {
+    return 'Seu usuário não tem permissão para salvar produtos.';
+  }
+
+  if (normalizedMessage.includes('categoria')) {
+    return message;
+  }
+
+  if (normalizedMessage.includes('customização') || normalizedMessage.includes('pergunta')) {
+    return message;
+  }
+
+  if (normalizedMessage.includes('failed to fetch') || normalizedMessage.includes('err_connection')) {
+    return 'Falha de rede ao salvar produto. Verifique a conexão com o Supabase.';
+  }
+
+  return message || fallback;
+}
+
 const IMAGE_BUCKET = import.meta.env.VITE_IMAGE_BUCKET?.trim() || 'product-images';
+const AUTO_SKU_DEBOUNCE_MS = 650;
 const createTempId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
 const createUuid = () => {
@@ -182,6 +239,10 @@ function formatCurrencyInputMask(value: string): string {
   const digits = value.replace(/\D/g, '');
   if (!digits) return '';
   return (Number.parseInt(digits, 10) / 100).toFixed(2).replace('.', ',');
+}
+
+function formatIntegerInput(value: string): string {
+  return value.replace(/\D/g, '');
 }
 
 function formatCurrencyFromCents(cents: number) {
@@ -278,9 +339,11 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
     createInitialMobileQuestionFormState
   );
   const [fields, setFields] = useState<ProductDetailField[]>([]);
-  const [initialFields, setInitialFields] = useState<ProductDetailField[]>([]);
+  const [, setInitialFields] = useState<ProductDetailField[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const savingRef = useRef(false);
+  const skuGenerationRequestRef = useRef(0);
   const validationToastTimersRef = useRef<number[]>([]);
   const isCreateMode = !productId;
   const authRetryRef = useRef(withAuthRetry);
@@ -676,14 +739,16 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
       const row = { ...next[index] };
 
       if (field === 'unitPriceInput') {
-        row.unitPriceInput = value;
-        const parsed = parseCurrencyInput(value || '0');
+        const formattedValue = formatCurrencyInputMask(value);
+        row.unitPriceInput = formattedValue;
+        const parsed = parseCurrencyInput(formattedValue || '0');
         row.unit_price_cents = Number.isNaN(parsed) ? 0 : Math.round(parsed * 100);
       } else if (field === 'max_quantity') {
-        const trimmed = value.trim();
+        const trimmed = formatIntegerInput(value);
         row.max_quantity = trimmed === '' ? null : Number.parseInt(trimmed, 10) || null;
       } else {
-        row.min_quantity = Number.parseInt(value, 10) || 0;
+        const trimmed = formatIntegerInput(value);
+        row.min_quantity = trimmed === '' ? 0 : Number.parseInt(trimmed, 10) || 0;
       }
 
       next[index] = row;
@@ -742,9 +807,11 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
     field: 'minQuantity' | 'maxQuantity' | 'unitPriceInput',
     value: string
   ) => {
+    const nextValue = field === 'unitPriceInput' ? formatCurrencyInputMask(value) : formatIntegerInput(value);
     setMobileQuantityForm((prev) => ({
       ...prev,
-      [field]: field === 'unitPriceInput' ? formatCurrencyInputMask(value) : value,
+      [field]: nextValue,
+      noMax: field === 'maxQuantity' ? nextValue.trim() === '' : prev.noMax,
       errorMessage: null,
     }));
   };
@@ -768,7 +835,9 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
       return;
     }
 
-    if (!mobileQuantityForm.noMax) {
+    const noMax = mobileQuantityForm.noMax || mobileQuantityForm.maxQuantity.trim() === '';
+
+    if (!noMax) {
       if (!Number.isFinite(parsedMax) || parsedMax < parsedMin) {
         setMobileQuantityForm((prev) => ({
           ...prev,
@@ -806,7 +875,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
           ? quantityPrices[mobileQuantityForm.targetIndex]?.product_id ?? productId ?? ''
           : productId ?? '',
       min_quantity: parsedMin,
-      max_quantity: mobileQuantityForm.noMax ? null : parsedMax,
+      max_quantity: noMax ? null : parsedMax,
       unit_price_cents: Math.round(parsedPrice * 100),
       currency:
         mobileQuantityForm.mode === 'edit' && mobileQuantityForm.targetIndex !== null
@@ -1121,37 +1190,92 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
     setFields((prev) => prev.filter((field) => field.clientId !== clientId));
   };
 
+  const generateSkuFromName = useCallback(
+    async (
+      sourceName: string,
+      options: { markAsDirty?: boolean; showValidation?: boolean } = {}
+    ) => {
+      const base = toSlug(sourceName || '');
+      const requestId = skuGenerationRequestRef.current + 1;
+      skuGenerationRequestRef.current = requestId;
+
+      if (!base) {
+        if (options.showValidation) {
+          handleValidationIssue('Preencha o nome para gerar o SKU automaticamente.');
+        }
+        return null;
+      }
+
+      setGeneratingSku(true);
+      try {
+        const { data, error } = await runQuery(
+          () => supabase.from('products').select('sku').ilike('sku', `${base}%`),
+          'generate-sku'
+        );
+        if (error) {
+          throw error;
+        }
+        if (requestId !== skuGenerationRequestRef.current) {
+          return null;
+        }
+
+        const existing = new Set((data ?? []).map((p: any) => String(p.sku).toLowerCase()));
+        let candidate = base;
+        let suffix = 2;
+        while (existing.has(candidate.toLowerCase())) {
+          candidate = `${base}-${suffix}`;
+          suffix += 1;
+        }
+        setSku(candidate);
+        setSkuEditable(false);
+        if (options.markAsDirty) {
+          markDirty();
+        }
+        return candidate;
+      } catch (err) {
+        if (requestId === skuGenerationRequestRef.current) {
+          const message = err instanceof Error ? err.message : 'Erro ao gerar SKU.';
+          if (options.showValidation) {
+            setErrorMessage(message);
+          } else if (import.meta.env.DEV) {
+            console.error('Erro ao gerar SKU automaticamente.', err);
+          }
+        }
+        return null;
+      } finally {
+        if (requestId === skuGenerationRequestRef.current) {
+          setGeneratingSku(false);
+        }
+      }
+    },
+    [handleValidationIssue, markDirty, runQuery]
+  );
+
+  useEffect(() => {
+    if (!isCreateMode || skuEditable) return undefined;
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      skuGenerationRequestRef.current += 1;
+      setSku('');
+      setGeneratingSku(false);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void generateSkuFromName(trimmedName);
+    }, AUTO_SKU_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [generateSkuFromName, isCreateMode, name, skuEditable]);
+
   const generateSku = async () => {
     const base = toSlug(name || '');
     if (!base) {
       handleValidationIssue('Preencha o nome para gerar o SKU automaticamente.');
       return;
     }
-    setGeneratingSku(true);
-    try {
-      const { data, error } = await runQuery(
-        () => supabase.from('products').select('sku').ilike('sku', `${base}%`),
-        'generate-sku'
-      );
-      if (error) {
-        throw error;
-      }
-      const existing = new Set((data ?? []).map((p: any) => String(p.sku).toLowerCase()));
-      let candidate = base;
-      let suffix = 2;
-      while (existing.has(candidate.toLowerCase())) {
-        candidate = `${base}-${suffix}`;
-        suffix += 1;
-      }
-      setSku(candidate);
-      setSkuEditable(false);
-      markDirty();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao gerar SKU.';
-      setErrorMessage(message);
-    } finally {
-      setGeneratingSku(false);
-    }
+    await generateSkuFromName(name, { markAsDirty: true, showValidation: true });
   };
 
   const handleToggleSkuEdit = () => {
@@ -1320,6 +1444,9 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
   };
 
   const handleSave = async () => {
+    if (savingRef.current || saving || imageUploading) return;
+
+    savingRef.current = true;
     setShowUnsavedConfirm(false);
     setSaving(true);
     setErrorMessage(null);
@@ -1338,22 +1465,35 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
       }
 
       const parsedPrice = parseCurrencyInput(priceInput || '0');
-      if (Number.isNaN(parsedPrice)) {
-        throw createValidationError('Informe um preço base válido.');
+      if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+        throw createValidationError('Informe um preço base maior que zero.');
       }
 
       const trimmedName = name.trim();
-      const trimmedSku = sku.trim();
+      let trimmedSku = sku.trim();
       const trimmedDescription = description.trim();
 
       if (!trimmedName) {
         throw createValidationError('Informe um nome para o produto.');
+      }
+      if (isCreateMode && !skuEditable) {
+        const generatedSku = await generateSkuFromName(trimmedName);
+        trimmedSku = generatedSku?.trim() || trimmedSku;
       }
       if (!trimmedSku) {
         throw createValidationError('Informe um SKU.');
       }
       if (!categoryId) {
         throw createValidationError('Selecione uma categoria.');
+      }
+      const selectedCategory = categoryOptions.find((option) => option.id === categoryId);
+      const selectedCategoryName = selectedCategory?.name.trim() ?? '';
+      const selectedCategorySlug = selectedCategory?.slug.trim() ?? '';
+      if (!selectedCategoryName) {
+        throw createValidationError('Selecione uma categoria válida.');
+      }
+      if (!selectedCategorySlug) {
+        throw createValidationError('A categoria selecionada precisa ter um slug válido.');
       }
 
       const normalizedFields = fields.map((field, index) => {
@@ -1411,26 +1551,12 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
         }
       }
 
-      const { data: existingSku, error: skuError } = await runQuery(
-        () =>
-          supabase
-            .from('products')
-            .select('id')
-            .eq('sku', trimmedSku)
-            .limit(1)
-            .maybeSingle(),
-        'check-sku'
-      );
-
-      if (skuError) {
-        throw skuError;
-      }
-      if (existingSku && existingSku.id !== productId) {
-        throw createValidationError('SKU já está em uso. Escolha outro valor.');
-      }
-
       const minQtyNumber = minQuantity ? parseInt(minQuantity, 10) : null;
-      const payload = {
+      if (minQtyNumber !== null && (!Number.isFinite(minQtyNumber) || minQtyNumber < 1)) {
+        throw createValidationError('Quantidade mínima deve ser 1 ou mais.');
+      }
+      const productInput = {
+        id: productId ?? null,
         sku: trimmedSku,
         name: trimmedName,
         description: trimmedDescription || null,
@@ -1441,164 +1567,15 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
         image_url: imageUrl || null,
       };
 
-      let currentProductId = productId ?? '';
-      if (isCreateMode) {
-        try {
-          const { data: inserted, error: insertError, status, statusText } = await runQuery(
-            () =>
-              supabase
-                .from('products')
-                .insert(payload)
-                .select()
-                .single(),
-            'insert-product'
-          );
+      const quantityPricesInput = quantityPrices.map((row) => ({
+        min_quantity: row.min_quantity,
+        max_quantity: row.max_quantity === null ? null : row.max_quantity,
+        unit_price_cents: row.unit_price_cents,
+      }));
 
-          if (insertError || !inserted) {
-            console.error('Erro ao criar produto', {
-              status,
-              statusText,
-              endpoint: `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/products`,
-              payload,
-              error: insertError,
-            });
-            const duplicateSku =
-              insertError?.code === '23505' ||
-              insertError?.message?.toLowerCase().includes('duplicate');
-            const msg =
-              insertError?.message?.includes('Failed to fetch') || insertError?.message?.includes('ERR_CONNECTION')
-                ? 'Falha de rede ao criar produto. Verifique sua conexão e a URL do Supabase.'
-                : duplicateSku
-                  ? 'SKU já está em uso. Escolha outro valor.'
-                  : insertError;
-            throw msg ?? new Error('Não foi possível criar o produto.');
-          }
-          currentProductId = (inserted as { id: string }).id;
-        } catch (e: any) {
-          if (e?.message?.includes('Failed to fetch') || e?.message?.includes('ERR_CONNECTION')) {
-            throw new Error('Falha de rede ao criar produto. Verifique a conexão com o Supabase.');
-          }
-          throw e;
-        }
-      } else {
-        const { error: updateError, status, statusText } = await runQuery(
-          () => supabase.from('products').update(payload).eq('id', productId),
-          'update-product'
-        );
-
-        if (updateError) {
-          console.error('Erro ao atualizar produto', {
-            status,
-            statusText,
-            endpoint: `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/products`,
-            payload,
-            error: updateError,
-          });
-          const duplicateSku =
-            updateError?.code === '23505' ||
-            updateError?.message?.toLowerCase().includes('duplicate');
-          if (duplicateSku) {
-            throw new Error('SKU já está em uso. Escolha outro valor.');
-          }
-          throw updateError;
-        }
-      }
-
-      if (!currentProductId) {
-        throw new Error('ID do produto não encontrado após salvar.');
-      }
-
-      const { error: deleteQuantityError } = await runQuery(
-        () => supabase.from('product_quantity_prices').delete().eq('product_id', currentProductId),
-        'delete-quantity-prices'
-      );
-
-      if (deleteQuantityError) {
-        console.error(deleteQuantityError);
-        throw deleteQuantityError;
-      }
-
-      if (quantityPrices.length > 0) {
-        const quantityPayload = quantityPrices.map((row) => ({
-          product_id: currentProductId,
-          min_quantity: row.min_quantity,
-          max_quantity: row.max_quantity === null ? null : row.max_quantity,
-          unit_price_cents: row.unit_price_cents,
-          currency: 'BRL',
-        }));
-
-        const { error: insertQuantityError } = await runQuery(
-          () => supabase.from('product_quantity_prices').insert(quantityPayload),
-          'insert-quantity-prices'
-        );
-
-        if (insertQuantityError) {
-          console.error(insertQuantityError);
-          throw insertQuantityError;
-        }
-      }
-
-      const initialFieldIds = initialFields
-        .map((field) => field.id)
-        .filter(Boolean) as string[];
-      const currentFieldIds = normalizedFields
-        .map((field) => field.id)
-        .filter(Boolean) as string[];
-      const fieldsToDelete = initialFieldIds.filter((id) => !currentFieldIds.includes(id));
-
-      if (fieldsToDelete.length > 0) {
-        const { error: deleteFieldOptionsError } = await runQuery(
-          () => supabase.from('product_detail_options').delete().in('field_id', fieldsToDelete),
-          'delete-field-options-by-field'
-        );
-        if (deleteFieldOptionsError) {
-          throw deleteFieldOptionsError;
-        }
-        const { error: deleteFieldsError } = await runQuery(
-          () => supabase.from('product_detail_fields').delete().in('id', fieldsToDelete),
-          'delete-fields'
-        );
-        if (deleteFieldsError) {
-          throw deleteFieldsError;
-        }
-      }
-
-      const optionsToDelete = initialFields
-        .flatMap((field) => field.options ?? [])
-        .filter(
-          (opt) =>
-            opt.id &&
-            !normalizedFields.some((field) => field.options.some((currentOpt) => currentOpt.id === opt.id))
-        )
-        .map((opt) => opt.id as string);
-
-      if (optionsToDelete.length > 0) {
-        const { error: deleteOptionsError } = await runQuery(
-          () => supabase.from('product_detail_options').delete().in('id', optionsToDelete),
-          'delete-orphan-options'
-        );
-        if (deleteOptionsError) {
-          throw deleteOptionsError;
-        }
-      }
-
-      const existingFieldsPayload = normalizedFields
-        .filter((field) => field.id)
-        .map((field) => ({
-          id: field.id,
-          product_id: currentProductId,
-          field_key: field.field_key.trim(),
-          label: field.label.trim(),
-          input_type: field.input_type,
-          help_text: field.help_text,
-          is_required: field.is_required,
-          sort_order: Number.isFinite(field.sort_order) ? field.sort_order : 0,
-          is_active: field.is_active,
-        }));
-
-      const newFields = normalizedFields.filter((field) => !field.id);
-      const newFieldsPayload = newFields.map((field) => ({
-        product_id: currentProductId,
+      const detailFieldsInput = normalizedFields.map((field) => ({
+        id: field.id ?? null,
+        client_id: field.clientId ?? field.id ?? createTempId('field'),
         field_key: field.field_key.trim(),
         label: field.label.trim(),
         input_type: field.input_type,
@@ -1606,70 +1583,45 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
         is_required: field.is_required,
         sort_order: Number.isFinite(field.sort_order) ? field.sort_order : 0,
         is_active: field.is_active,
+        options: isOptionBasedInputType(field.input_type)
+          ? field.options.map((opt) => ({
+              id: opt.id ?? null,
+              label: opt.label?.trim() || opt.value.trim(),
+              value: opt.value.trim(),
+              extra_price_delta_cents: Math.round(
+                Number.isFinite(opt.extra_price_delta_cents) ? opt.extra_price_delta_cents : 0
+              ),
+              sort_order: Number.isFinite(opt.sort_order) ? opt.sort_order : 0,
+            }))
+          : [],
       }));
 
-      const fieldIdMap: Record<string, string> = {};
+      const { data: saveResult, error: saveError } = await runQuery(
+        () =>
+          supabase.rpc('admin_save_product', {
+            product_input: productInput,
+            quantity_prices_input: quantityPricesInput,
+            detail_fields_input: detailFieldsInput,
+          }),
+        'admin-save-product'
+      );
 
-      if (existingFieldsPayload.length > 0) {
-        const { data: updatedFields, error: updateFieldsError } = await runQuery(
-          () => supabase.from('product_detail_fields').upsert(existingFieldsPayload, { onConflict: 'id' }).select(),
-          'upsert-fields'
-        );
-
-        if (updateFieldsError) {
-          throw updateFieldsError;
-        }
-
-        (updatedFields ?? []).forEach((field) => {
-          const clientId = (fields.find((f) => f.id === field.id)?.clientId ??
-            field.id) as string;
-          fieldIdMap[clientId] = field.id;
+      if (saveError) {
+        console.error('Erro ao salvar produto', {
+          endpoint: `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/admin_save_product`,
+          productInput,
+          quantityPricesInput,
+          detailFieldsInput,
+          error: saveError,
         });
+        throw saveError;
       }
 
-      if (newFieldsPayload.length > 0) {
-        const { data: insertedFields, error: insertFieldsError } = await runQuery(
-          () => supabase.from('product_detail_fields').insert(newFieldsPayload).select(),
-          'insert-fields'
-        );
-
-        if (insertFieldsError) {
-          throw insertFieldsError;
-        }
-
-        (insertedFields ?? []).forEach((field, index) => {
-          const clientId = newFields[index]?.clientId ?? createTempId('field');
-          fieldIdMap[clientId] = field.id;
-        });
-      }
-
-      const resolvedOptions = normalizedFields.flatMap((field) => {
-        const fieldId = field.id ?? fieldIdMap[field.clientId ?? ''];
-        if (!fieldId || !isOptionBasedInputType(field.input_type)) {
-          return [];
-        }
-        return field.options
-          .filter((opt) => opt.id && opt.label?.trim() && opt.value?.trim())
-          .map((opt) => ({
-            id: opt.id as string,
-            field_id: fieldId,
-            label: opt.label?.trim() || opt.value.trim(),
-            value: opt.value.trim(),
-            extra_price_delta_cents: Math.round(
-              Number.isFinite(opt.extra_price_delta_cents) ? opt.extra_price_delta_cents : 0
-            ),
-            sort_order: Number.isFinite(opt.sort_order) ? opt.sort_order : 0,
-          }));
-      });
-
-      if (resolvedOptions.length > 0) {
-        const { error: upsertOptionsError } = await runQuery(
-          () => supabase.from('product_detail_options').upsert(resolvedOptions, { onConflict: 'field_id,value' }),
-          'upsert-field-options'
-        );
-        if (upsertOptionsError) {
-          throw upsertOptionsError;
-        }
+      const savedProductId = Array.isArray(saveResult)
+        ? (saveResult[0] as ProductSaveRpcResult | undefined)?.product_id
+        : (saveResult as ProductSaveRpcResult | null)?.product_id;
+      if (!savedProductId) {
+        throw new Error('ID do produto não encontrado após salvar.');
       }
 
       setIsDirty(false);
@@ -1680,32 +1632,27 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
         handleValidationIssue(err.message);
         return;
       }
-      const message =
-        err instanceof Error
-          ? err.message
-          : typeof err === 'string'
-            ? err
-            : 'Não foi possível salvar o produto. Tente novamente.';
       if (err) {
         console.error(err);
       }
-      setErrorMessage(message);
+      setErrorMessage(getProductSaveErrorMessage(err));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
-  const handleSoftDelete = async () => {
+  const handleDeleteProduct = async () => {
     if (!productId) return;
-    const confirmed = window.confirm('Tem certeza que deseja excluir (desativar) este produto?');
+    const confirmed = window.confirm('Tem certeza que deseja excluir este produto definitivamente? Esta ação remove o produto do banco de dados.');
     if (!confirmed) return;
     setShowUnsavedConfirm(false);
     setDeleting(true);
     setErrorMessage(null);
     try {
       const { error } = await runQuery(
-        () => supabase.from('products').update({ is_active: false }).eq('id', productId),
-        'soft-delete-product'
+        () => supabase.rpc('admin_delete_product', { p_product_id: productId }),
+        'delete-product'
       );
       if (error) {
         throw error;
@@ -1819,6 +1766,15 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
             className="admin-input"
             placeholder="Ex.: Palha italiana tradicional"
           />
+          {isCreateMode ? (
+            <small className="admin-helper-text admin-product-auto-sku-helper">
+              {generatingSku
+                ? 'Gerando SKU automaticamente...'
+                : sku
+                  ? `SKU automático: ${sku}`
+                  : 'O SKU será gerado automaticamente pelo nome.'}
+            </small>
+          ) : null}
         </label>
         <label className="admin-field">
           <span>Categoria</span>
@@ -1850,7 +1806,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
             inputMode="decimal"
             value={priceInput}
             onChange={(e) => {
-              setPriceInput(e.target.value);
+              setPriceInput(formatCurrencyInputMask(e.target.value));
               markDirty();
             }}
             className="admin-input"
@@ -1861,10 +1817,12 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
           <span>Quantidade mínima</span>
           <input
             type="number"
-            min="0"
+            min="1"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={minQuantity}
             onChange={(e) => {
-              setMinQuantity(e.target.value);
+              setMinQuantity(formatIntegerInput(e.target.value));
               markDirty();
             }}
             className="admin-input"
@@ -1903,7 +1861,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                 }
               }}
               className={`admin-input${skuEditable ? '' : ' is-readonly'}`}
-              placeholder={skuEditable ? 'ex.: palha-tradicional-kg' : 'Clique em Gerar SKU'}
+              placeholder={skuEditable ? 'ex.: palha-tradicional-kg' : 'SKU gerado automaticamente'}
               readOnly={!skuEditable}
             />
             <button
@@ -1919,7 +1877,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
             </button>
           </div>
           <small className="admin-helper-text">
-            {skuEditable ? 'Edição liberada.' : 'Use “Gerar SKU” ou libere a edição.'}
+            {skuEditable ? 'Edição liberada.' : 'O SKU é gerado automaticamente pelo nome do produto.'}
           </small>
         </label>
       </div>
@@ -2121,6 +2079,8 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                               <input
                                 type="number"
                                 min={1}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 value={mobileQuantityForm.minQuantity}
                                 onChange={(event) => handleMobileQuantityInputChange('minQuantity', event.target.value)}
                                 className={`admin-input${
@@ -2136,14 +2096,14 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                               />
                             </label>
                             <label
-                              className={`admin-quantity-inline-field${
-                                mobileQuantityForm.noMax ? ' is-disabled' : ''
-                              }`}
+                              className="admin-quantity-inline-field"
                             >
                               <span>Até</span>
                               <input
                                 type="number"
                                 min={mobileQuantityForm.minQuantity || '1'}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 value={mobileQuantityForm.maxQuantity}
                                 onChange={(event) => handleMobileQuantityInputChange('maxQuantity', event.target.value)}
                                 className={`admin-input${
@@ -2151,7 +2111,6 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                 }`}
                                 aria-invalid={mobileQuantityForm.errorMessage?.includes('Máximo')}
                                 placeholder="Sem máximo"
-                                disabled={mobileQuantityForm.noMax}
                               />
                             </label>
                           </div>
@@ -2268,7 +2227,9 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                       <input
                                         type="number"
                                         min={1}
-                                        value={row.min_quantity}
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        value={row.min_quantity || ''}
                                         onChange={(e) =>
                                           handleQuantityPriceChange(index, 'min_quantity', e.target.value)
                                         }
@@ -2284,6 +2245,8 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                       <input
                                         type="number"
                                         min={row.min_quantity || 1}
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
                                         value={row.max_quantity ?? ''}
                                         onChange={(e) =>
                                           handleQuantityPriceChange(index, 'max_quantity', e.target.value)
@@ -2292,7 +2255,6 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                                         aria-invalid={rowErrors.max.length > 0}
                                         aria-label="Até"
                                         placeholder="Sem máximo"
-                                        disabled={noMax}
                                       />
                                       <div className="admin-quantity-toggle">
                                         <label className="admin-quantity-toggle-label">
@@ -2928,7 +2890,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                     <button
                       type="button"
                       className="admin-button-icon-delete"
-                      onClick={handleSoftDelete}
+                      onClick={handleDeleteProduct}
                       disabled={deleting || saving || imageUploading}
                       aria-label="Excluir produto"
                       title="Excluir produto"
@@ -2939,7 +2901,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                     <button
                       type="button"
                       className="admin-button-outline admin-button-danger-outline"
-                      onClick={handleSoftDelete}
+                      onClick={handleDeleteProduct}
                       disabled={deleting || saving || imageUploading}
                     >
                       {deleting ? 'Excluindo...' : 'Excluir produto'}

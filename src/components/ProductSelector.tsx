@@ -201,7 +201,9 @@ const ProductSelector = ({ product, onAddToCart, onClose, initialItem, isClosing
   const unitPrice = useMemo(() => {
     if (product.priceTiers && product.priceTiers.length > 0) {
       const sorted = [...product.priceTiers].sort((a, b) => a.minQuantity - b.minQuantity);
-      const tier = sorted.filter((t) => quantity >= t.minQuantity).pop();
+      const tier = sorted
+        .filter((t) => quantity >= t.minQuantity && (t.maxQuantity == null || quantity <= t.maxQuantity))
+        .pop();
       if (tier) return tier.price;
     }
     return product.basePrice;
@@ -360,6 +362,11 @@ const ProductSelector = ({ product, onAddToCart, onClose, initialItem, isClosing
     product.priceTiers && product.priceTiers.length > 0
       ? Math.min(...product.priceTiers.map((t) => t.minQuantity))
       : minQuantity;
+  const nextTier = useMemo(() => {
+    if (!product.priceTiers?.length) return null;
+    const sorted = [...product.priceTiers].sort((a, b) => a.minQuantity - b.minQuantity);
+    return sorted.find((tier) => quantity < tier.minQuantity) ?? null;
+  }, [product.priceTiers, quantity]);
   const updateQuantity = (nextValue: number) => {
     const normalized = Number.isFinite(nextValue) ? nextValue : minQuantity;
     const clamped = Math.max(minQuantity, normalized);
@@ -420,7 +427,11 @@ const ProductSelector = ({ product, onAddToCart, onClose, initialItem, isClosing
                   <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Preço unitário</p>
                     <p className="mt-1 text-2xl font-extrabold text-stone-950">{formatPrice(unitPriceWithExtras)}</p>
-                    <p className="mt-1 text-sm text-stone-500">{`Pedido mínimo: ${tierStartQuantity} unidades`}</p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      {nextTier
+                        ? `A partir de ${nextTier.minQuantity} un: ${formatPrice(nextTier.price)} cada`
+                        : `Pedido mínimo: ${tierStartQuantity} unidades`}
+                    </p>
                   </div>
                 </div>
               </section>

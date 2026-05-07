@@ -503,20 +503,20 @@ export default function ProductsPage() {
     setIsCreateMode(false);
   };
 
-  const handleSoftDelete = async (id: string) => {
-    const confirmed = window.confirm('Deseja excluir (desativar) este produto?');
+  const handleDeleteProduct = async (id: string) => {
+    const confirmed = window.confirm('Deseja excluir este produto definitivamente? Esta ação remove o produto do banco de dados.');
     if (!confirmed) return;
     setDeletingId(id);
     setError(null);
     setSuccessMessage(null);
     const { error: deleteError } = await withAuthRetry(
-      () => supabase.from('products').update({ is_active: false }).eq('id', id),
+      () => supabase.rpc('admin_delete_product', { p_product_id: id }),
       { label: 'delete-product' }
     );
     if (deleteError) {
       setError('Não foi possível excluir o produto agora.');
     } else {
-      setSuccessMessage('Produto excluído com sucesso.');
+      setSuccessMessage('Produto excluído definitivamente.');
       await loadProducts();
     }
     setDeletingId(null);
@@ -545,8 +545,8 @@ export default function ProductsPage() {
       const linkedProductsCount = count ?? 0;
       const warning =
         linkedProductsCount > 0
-          ? `Excluir a categoria "${category.name}" também vai excluir ${linkedProductsCount} item(ns) vinculado(s) a ela do catálogo. Deseja continuar?`
-          : `Excluir a categoria "${category.name}"? Esta ação removerá a categoria do catálogo.`;
+          ? `Excluir a categoria "${category.name}" também vai excluir definitivamente ${linkedProductsCount} produto(s) vinculado(s). Deseja continuar?`
+          : `Excluir a categoria "${category.name}" definitivamente?`;
 
       const confirmed = window.confirm(warning);
       if (!confirmed) {
@@ -554,27 +554,22 @@ export default function ProductsPage() {
         return;
       }
 
-      if (linkedProductsCount > 0) {
-        const { error: productsError } = await withAuthRetry(
-          () => supabase.from('products').update({ category_id: null, is_active: false }).eq('category_id', id),
-          { label: 'delete-products-by-category' }
-        );
-
-        if (productsError) throw productsError;
-      }
-
-      const { error: deleteError } = await withAuthRetry(
-        () => supabase.from('categories').delete().eq('id', id),
+      const { data: deleteResult, error: deleteError } = await withAuthRetry(
+        () => supabase.rpc('admin_delete_category', { p_category_id: id }),
         { label: 'delete-category' }
       );
 
       if (deleteError) {
         setCategoriesError('Não foi possível excluir a categoria agora.');
       } else {
+        const deletedProductsCount =
+          Array.isArray(deleteResult) && deleteResult[0]?.deleted_products_count !== undefined
+            ? Number(deleteResult[0].deleted_products_count)
+            : linkedProductsCount;
         setSuccessMessage(
-          linkedProductsCount > 0
-            ? `Categoria excluída e ${linkedProductsCount} item(ns) removido(s) do catálogo.`
-            : 'Categoria excluída com sucesso.'
+          deletedProductsCount > 0
+            ? `Categoria excluída definitivamente com ${deletedProductsCount} produto(s).`
+            : 'Categoria excluída definitivamente.'
         );
         await loadCategories();
         await loadProducts();
@@ -931,7 +926,7 @@ export default function ProductsPage() {
                   product={product}
                   categoryName={product.category_id ? categoryById.get(product.category_id)?.name ?? 'Sem categoria' : 'Sem categoria'}
                   deleting={deletingId === product.id}
-                  onDelete={handleSoftDelete}
+                  onDelete={handleDeleteProduct}
                   onEdit={handleEdit}
                 />
               ))}

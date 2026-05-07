@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { FaArrowUpRightFromSquare } from 'react-icons/fa6';
 import AdminHeaderMetrics from './AdminHeaderMetrics';
 import { useAuth } from '../../lib/auth/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -268,6 +269,13 @@ export default function AdminHeader({ onOpenMobileMenu }: AdminHeaderProps) {
             <div className="admin-header-title-row">
               <h1 className="admin-header-title">{meta.title}</h1>
               <span className="admin-header-date">{todayLabel}</span>
+              <a
+                className="admin-header-catalog-link"
+                href="/"
+              >
+                <FaArrowUpRightFromSquare aria-hidden="true" />
+                Ver catálogo
+              </a>
             </div>
             <p className="admin-header-description">{meta.description}</p>
           </div>

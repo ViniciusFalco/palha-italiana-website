@@ -21,6 +21,15 @@ const sections = [
       },
     ],
   },
+  {
+    title: 'Cliente',
+    links: [
+      {
+        to: '/',
+        label: 'Ver catálogo',
+      },
+    ],
+  },
 ] satisfies Array<{
   title: string;
   links: Array<{

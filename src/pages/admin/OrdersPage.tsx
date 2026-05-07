@@ -338,7 +338,7 @@ const isSameDay = (value: string | null | undefined, reference: Date) => {
 };
 
 const getOrderItemDisplayName = (item: OrderItem) => {
-  const baseName = item.product?.name?.trim() || 'Item';
+  const baseName = item.product?.name?.trim() || 'Produto excluído';
   const optionName = item.product_option?.option_name?.trim();
   return optionName ? `${baseName} (${optionName})` : baseName;
 };

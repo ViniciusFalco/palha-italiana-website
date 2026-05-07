@@ -105,6 +105,7 @@
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
 .admin-header-title {
@@ -132,6 +133,37 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.admin-header-catalog-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8fb;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.admin-header-catalog-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 143, 190, 0.48);
+  background: rgba(255, 0, 127, 0.16);
+  box-shadow: 0 14px 28px rgba(255, 0, 127, 0.16);
 }
 
 .admin-header-description {

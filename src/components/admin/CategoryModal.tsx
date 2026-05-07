@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { FaUpload, FaXmark } from 'react-icons/fa6';
+import { FaTrashCan, FaUpload, FaXmark } from 'react-icons/fa6';
 import {
   AdminButton,
   AdminField,
@@ -9,6 +9,7 @@ import {
   AdminModalBody,
   AdminModalFooter,
   AdminModalHeader,
+  AdminSelect,
   AdminTextarea,
 } from './AdminPrimitives';
 import { supabase } from '../../lib/supabase';
@@ -32,6 +33,13 @@ const toSlug = (value: string) =>
     .replace(/(^-|-$)/g, '');
 
 const IMAGE_BUCKET = import.meta.env.VITE_IMAGE_BUCKET?.trim() || 'product-images';
+const CATEGORY_ORDER_STEP = 10;
+
+type CategoryOrderRow = {
+  id: string;
+  name: string;
+  sort_order: number | null;
+};
 
 type CategorySnapshot = {
   name: string;
@@ -46,6 +54,14 @@ const toSortOrderValue = (value: string) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? 0 : parsed;
 };
+
+const sortCategoryRows = (rows: CategoryOrderRow[]) =>
+  [...rows].sort((a, b) => {
+    const sortA = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+    const sortB = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+    if (sortA !== sortB) return sortA - sortB;
+    return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+  });
 
 const buildCategorySnapshot = (values: {
   name: string;
@@ -71,6 +87,9 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
+  const [categoryOrderRows, setCategoryOrderRows] = useState<CategoryOrderRow[]>([]);
+  const [categoryOrderLoading, setCategoryOrderLoading] = useState(false);
+  const [categoryOrderError, setCategoryOrderError] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [imageUploading, setImageUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -105,18 +124,16 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
 
   useEffect(() => {
     if (!isOpen) return;
-    const nextSortOrder =
-      Number.isFinite(initialCategory?.sort_order)
-        ? String(initialCategory?.sort_order)
-        : initialCategory?.sort_order
-          ? String(initialCategory?.sort_order)
-          : '0';
+    const nextSortOrder = '1';
 
     setName(initialCategory?.name ?? '');
     setSlug(initialCategory?.slug ?? '');
     setDescription(initialCategory?.description ?? '');
     setImageUrl(initialCategory?.image_url ?? '');
     setSortOrder(nextSortOrder);
+    setCategoryOrderRows([]);
+    setCategoryOrderLoading(false);
+    setCategoryOrderError(null);
     setIsActive(initialCategory?.is_active ?? true);
     setImageUploading(false);
     setErrorMessage(null);
@@ -133,6 +150,61 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
       })
     );
   }, [initialCategory, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let ignore = false;
+
+    const loadCategoryOrder = async () => {
+      setCategoryOrderLoading(true);
+      setCategoryOrderError(null);
+
+      const { data, error } = await withAuthRetry(
+        () =>
+          supabase
+            .from('categories')
+            .select('id, name, sort_order')
+            .order('sort_order', { ascending: true })
+            .order('name', { ascending: true }),
+        { label: 'load-category-order' }
+      );
+
+      if (ignore) return;
+
+      if (error) {
+        setCategoryOrderRows([]);
+        setCategoryOrderError('Não foi possível carregar a ordem atual das categorias.');
+        setCategoryOrderLoading(false);
+        return;
+      }
+
+      const rows = sortCategoryRows((data ?? []) as CategoryOrderRow[]);
+      const currentId = initialCategory?.id ?? null;
+      const currentIndex = currentId ? rows.findIndex((row) => row.id === currentId) : -1;
+      const nextPosition = currentIndex >= 0 ? currentIndex + 1 : rows.length + 1;
+      const nextSortOrder = String(Math.max(1, nextPosition));
+
+      setCategoryOrderRows(rows);
+      setSortOrder(nextSortOrder);
+      setInitialSnapshot(
+        buildCategorySnapshot({
+          name: initialCategory?.name ?? '',
+          slug: initialCategory?.slug ?? initialCategory?.name ?? '',
+          description: initialCategory?.description ?? '',
+          imageUrl: initialCategory?.image_url ?? '',
+          sortOrder: nextSortOrder,
+          isActive: initialCategory?.is_active ?? true,
+        })
+      );
+      setCategoryOrderLoading(false);
+    };
+
+    void loadCategoryOrder();
+
+    return () => {
+      ignore = true;
+    };
+  }, [initialCategory, isOpen, withAuthRetry]);
 
   const normalizedSlug = useMemo(() => (slugTouched ? toSlug(slug) : toSlug(name)), [name, slug, slugTouched]);
   const currentSnapshot = useMemo(
@@ -159,14 +231,60 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
     );
   }, [currentSnapshot, initialSnapshot]);
 
+  const orderedSiblingCategories = useMemo(
+    () => sortCategoryRows(categoryOrderRows.filter((category) => category.id !== initialCategory?.id)),
+    [categoryOrderRows, initialCategory?.id]
+  );
+  const maxOrderPosition = Math.max(1, orderedSiblingCategories.length + 1);
+  const selectedOrderPosition = Math.min(Math.max(1, toSortOrderValue(sortOrder) || 1), maxOrderPosition);
+  const orderOptions = useMemo(
+    () =>
+      Array.from({ length: maxOrderPosition }, (_, index) => {
+        const position = index + 1;
+        if (position === 1) {
+          return {
+            value: String(position),
+            label: orderedSiblingCategories.length === 0 ? '1 - Primeira categoria' : '1 - Antes de todas',
+          };
+        }
+
+        const previousCategory = orderedSiblingCategories[position - 2];
+        return {
+          value: String(position),
+          label: previousCategory ? `${position} - Depois de ${previousCategory.name}` : `${position} - Última posição`,
+        };
+      }),
+    [maxOrderPosition, orderedSiblingCategories]
+  );
+
+  const reorderCategories = async (targetId: string, targetName: string, targetPosition: number) => {
+    const rowsWithoutTarget = sortCategoryRows(categoryOrderRows.filter((category) => category.id !== targetId));
+    const nextRows: CategoryOrderRow[] = [...rowsWithoutTarget];
+    nextRows.splice(Math.min(Math.max(targetPosition - 1, 0), nextRows.length), 0, {
+      id: targetId,
+      name: targetName,
+      sort_order: targetPosition * CATEGORY_ORDER_STEP,
+    });
+
+    for (let index = 0; index < nextRows.length; index += 1) {
+      const category = nextRows[index];
+      const nextSortOrder = (index + 1) * CATEGORY_ORDER_STEP;
+      const { error } = await withAuthRetry(
+        () => supabase.from('categories').update({ sort_order: nextSortOrder }).eq('id', category.id),
+        { label: 'reorder-categories' }
+      );
+      if (error) throw error;
+    }
+  };
+
   const requestClose = useCallback(() => {
-    if (isMobile && isDirty) {
+    if (isDirty) {
       setShowUnsavedConfirm(true);
       return;
     }
     setShowUnsavedConfirm(false);
     onClose();
-  }, [isDirty, isMobile, onClose]);
+  }, [isDirty, onClose]);
 
   const handleSelectImage = () => {
     if (imageUploading) return;
@@ -215,12 +333,6 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
   };
 
   useEffect(() => {
-    if (!isMobile) {
-      setShowUnsavedConfirm(false);
-    }
-  }, [isMobile]);
-
-  useEffect(() => {
     if (!isOpen || !isMobile) return;
 
     const handleEscapeKey = (event: KeyboardEvent) => {
@@ -266,28 +378,35 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
         throw new Error('Slug já está em uso. Escolha outro valor.');
       }
 
-      const sortOrderNumber = Number.parseInt(sortOrder, 10);
+      const targetPosition = selectedOrderPosition;
       const payload = {
         name: trimmedName,
         slug: nextSlug,
         description: trimmedDescription || null,
         image_url: trimmedImage || null,
-        sort_order: Number.isNaN(sortOrderNumber) ? 0 : sortOrderNumber,
+        sort_order: targetPosition * CATEGORY_ORDER_STEP,
         is_active: isActive,
       };
 
+      let savedCategoryId = initialCategory?.id ?? null;
       if (isEditMode && initialCategory?.id) {
         const { error } = await withAuthRetry(
           () => supabase.from('categories').update(payload).eq('id', initialCategory.id),
           { label: 'update-category' }
         );
         if (error) throw error;
+        savedCategoryId = initialCategory.id;
       } else {
-        const { error } = await withAuthRetry(
-          () => supabase.from('categories').insert(payload),
+        const { data, error } = await withAuthRetry(
+          () => supabase.from('categories').insert(payload).select('id').single(),
           { label: 'insert-category' }
         );
         if (error) throw error;
+        savedCategoryId = (data as { id?: string } | null)?.id ?? null;
+      }
+
+      if (savedCategoryId) {
+        await reorderCategories(savedCategoryId, trimmedName, targetPosition);
       }
 
       onSaved();
@@ -351,7 +470,7 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
               />
             </AdminField>
 
-            <div className="admin-field admin-field-full">
+            <div className="admin-field admin-field-full admin-category-image-field">
               <span>Imagem</span>
               <div
                 className="admin-image-wrapper"
@@ -395,27 +514,42 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
                 </AdminButton>
                 {imageUrl ? (
                   <AdminButton
-                    variant="ghost"
-                    className="admin-button-block"
+                    variant="dangerGhost"
+                    size="sm"
+                    className="admin-button-block admin-category-remove-image"
                     onClick={() => setImageUrl('')}
                     disabled={imageUploading}
                   >
+                    <FaTrashCan aria-hidden="true" />
                     Remover foto
                   </AdminButton>
                 ) : null}
               </div>
-              <small className="admin-helper-text">
+              <small className="admin-helper-text admin-category-image-helper">
                 JPG, PNG ou WEBP. A foto será enviada para o storage e salva como URL pública.
               </small>
             </div>
 
-            <AdminField label="Ordem">
-              <AdminInput
-                type="number"
-                value={sortOrder}
+            <AdminField
+              className="admin-field-full admin-category-order-field"
+              label="Posição no catálogo"
+              hint="Escolha onde a categoria aparece. Ao salvar, a ordem é reorganizada automaticamente."
+            >
+              <AdminSelect
+                value={String(selectedOrderPosition)}
                 onChange={(e) => setSortOrder(e.target.value)}
-                min="0"
-              />
+                disabled={categoryOrderLoading}
+              >
+                {orderOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </AdminSelect>
+              <div className="admin-category-order-preview" aria-live="polite">
+                <strong>{selectedOrderPosition}º lugar no catálogo</strong>
+              </div>
+              {categoryOrderError && <small className="admin-field-error">{categoryOrderError}</small>}
             </AdminField>
 
             <label className="admin-switch admin-field-full admin-category-active-switch">
@@ -449,8 +583,32 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
             </div>
           </details>
 
-          {isMobile && showUnsavedConfirm && (
-            <div className="admin-modal-unsaved-confirm" role="alertdialog" aria-live="polite">
+        </AdminModalBody>
+
+        <AdminModalFooter className={isMobile ? 'admin-modal-footer-fixed admin-modal-footer-mobile' : undefined}>
+          {!isMobile && (
+            <AdminButton variant="ghost" onClick={requestClose}>
+              Cancelar
+            </AdminButton>
+          )}
+          <AdminButton onClick={handleSave} disabled={saving || imageUploading}>
+            {saving ? 'Salvando...' : imageUploading ? 'Enviando foto...' : 'Salvar categoria'}
+          </AdminButton>
+        </AdminModalFooter>
+
+        {showUnsavedConfirm && (
+          <div
+            className="admin-modal-unsaved-popover-backdrop"
+            role="presentation"
+            onClick={() => setShowUnsavedConfirm(false)}
+          >
+            <div
+              className="admin-modal-unsaved-confirm admin-modal-unsaved-confirm-popover"
+              role="alertdialog"
+              aria-live="polite"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
               <p>Existem itens não salvos, deseja cancelar as modificações?</p>
               <div className="admin-modal-unsaved-actions">
                 <button
@@ -469,19 +627,8 @@ export default function CategoryModal({ isOpen, initialCategory, onClose, onSave
                 </button>
               </div>
             </div>
-          )}
-        </AdminModalBody>
-
-        <AdminModalFooter className={isMobile ? 'admin-modal-footer-fixed admin-modal-footer-mobile' : undefined}>
-          {!isMobile && (
-            <AdminButton variant="ghost" onClick={requestClose}>
-              Cancelar
-            </AdminButton>
-          )}
-          <AdminButton onClick={handleSave} disabled={saving || imageUploading}>
-            {saving ? 'Salvando...' : imageUploading ? 'Enviando foto...' : 'Salvar categoria'}
-          </AdminButton>
-        </AdminModalFooter>
+          </div>
+        )}
       </AdminModal>
     </AdminModalBackdrop>
   );

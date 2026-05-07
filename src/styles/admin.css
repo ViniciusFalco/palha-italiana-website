@@ -1158,6 +1158,12 @@
   color: var(--product-modal-ink);
 }
 
+.admin-product-auto-sku-helper {
+  color: rgba(125, 102, 114, 0.72);
+  font-size: 0.78rem;
+  text-align: left;
+}
+
 .admin-modal-category .admin-advanced-panel {
   border: 1px solid rgba(232, 213, 220, 0.94);
   background: rgba(255, 255, 255, 0.94);
@@ -1176,9 +1182,90 @@
   color: var(--admin-muted);
 }
 
+.admin-modal-category {
+  position: relative;
+}
+
+.admin-category-image-field {
+  margin-bottom: 8px;
+  padding-bottom: 10px;
+}
+
+.admin-modal-category .admin-category-remove-image {
+  width: auto;
+  min-width: 188px;
+  min-height: 40px;
+  align-self: center;
+  border-color: rgba(179, 71, 99, 0.18);
+  border-radius: 14px;
+  background: rgba(179, 71, 99, 0.06);
+  color: #a23b58;
+  box-shadow: none;
+}
+
+.admin-modal-category .admin-category-remove-image:hover {
+  border-color: rgba(179, 71, 99, 0.32);
+  background: rgba(179, 71, 99, 0.1);
+  color: #8f2f4b;
+}
+
+.admin-modal-category .admin-category-remove-image svg {
+  width: 13px;
+  height: 13px;
+}
+
+.admin-category-image-helper {
+  margin-top: 2px;
+  margin-bottom: 16px;
+  color: rgba(125, 102, 114, 0.62);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.admin-category-order-field {
+  gap: 10px;
+  margin: 8px 0;
+  padding: 20px 0 22px;
+  border-top: 1px solid rgba(232, 213, 220, 0.9);
+  border-bottom: 1px solid rgba(232, 213, 220, 0.9);
+}
+
+.admin-category-order-field > span {
+  color: #9e5870;
+}
+
+.admin-category-order-field .admin-helper-text {
+  max-width: 520px;
+  margin: 0 auto;
+  color: rgba(125, 102, 114, 0.7);
+  font-size: 0.78rem;
+}
+
 .admin-category-active-switch {
   grid-column: 1 / -1;
   justify-self: center;
+}
+
+.admin-category-order-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 0, 127, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 0, 127, 0.06);
+  color: var(--admin-muted);
+  font-size: 0.84rem;
+}
+
+.admin-category-order-preview strong {
+  min-width: 0;
+  color: #9f365d;
+  font-size: 0.94rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .admin-modal-product .admin-advanced-panel {
@@ -1467,6 +1554,28 @@
   background: rgba(255, 240, 246, 0.78);
 }
 
+.admin-modal-unsaved-popover-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(255, 250, 252, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.admin-modal-unsaved-confirm-popover {
+  width: min(100%, 420px);
+  gap: 14px;
+  padding: 18px;
+  border-color: rgba(255, 0, 127, 0.22);
+  background: rgba(255, 250, 252, 0.96);
+  box-shadow: 0 24px 58px rgba(36, 22, 29, 0.18);
+  text-align: center;
+}
+
 .admin-modal-unsaved-confirm p {
   margin: 0;
   color: #4d1730;
@@ -1611,6 +1720,35 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .admin-modal-unsaved-popover-backdrop {
+    position: fixed;
+    z-index: 40;
+    padding: 18px;
+  }
+
+  .admin-modal-unsaved-confirm-popover {
+    width: min(100%, 340px);
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .admin-modal-unsaved-confirm-popover .admin-modal-unsaved-actions {
+    flex-direction: column;
+  }
+
+  .admin-modal-unsaved-confirm-popover .admin-modal-unsaved-actions > button {
+    width: 100%;
+  }
+
+  .admin-modal-category .admin-category-remove-image {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .admin-category-order-preview strong {
+    text-align: center;
   }
 
   .admin-modal-category .admin-modal-footer-fixed {

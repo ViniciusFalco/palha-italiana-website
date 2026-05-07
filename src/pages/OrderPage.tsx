@@ -384,6 +384,7 @@ const OrderPage = () => {
           requiresRibbonColor: item.requiresRibbonColor,
           requiresFormColor: item.requiresFormColor,
           sizeOptions,
+          priceTiers: item.priceTiers,
         } as ProductOption;
       });
     }
@@ -856,9 +857,11 @@ const OrderPage = () => {
                 <h2 className="font-bebas text-4xl leading-none tracking-wide text-white md:text-6xl">
                   {activeCategory.name}
                 </h2>
-                <p className="max-w-2xl text-sm leading-relaxed text-white/70 md:text-base">
-                  {activeCategory.description?.trim() ? activeCategory.description : 'Escolha os produtos e personalize seu pedido.'}
-                </p>
+                {activeCategory.description?.trim() ? (
+                  <p className="max-w-2xl text-sm leading-relaxed text-white/70 md:text-base">
+                    {activeCategory.description}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 text-center">
@@ -927,17 +930,19 @@ const OrderPage = () => {
                             {categoryProductCounts.get(category.id) ?? 0}
                           </span>
                         </div>
-                        <p
-                          className="text-sm leading-relaxed text-stone-600"
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {category.description ?? 'Sem descrição disponível.'}
-                        </p>
+                        {category.description?.trim() ? (
+                          <p
+                            className="text-sm leading-relaxed text-stone-600"
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {category.description}
+                          </p>
+                        ) : null}
                         <span className="mt-auto inline-flex items-center justify-between border-t border-stone-200 pt-3 text-sm font-bold text-primary">
                           Ver produtos
                           <FaPlus size={12} className="transition group-hover:rotate-90" />
@@ -963,8 +968,15 @@ const OrderPage = () => {
                 <div className="grid grid-cols-1 gap-4 md:gap-6">
                   {activeProducts.map((product, index) => {
                     const hasSizes = product.requiresSize || (product.sizeOptions?.length ?? 0) > 0;
+                    const lowestTierPrice = product.priceTiers?.length
+                      ? Math.min(...product.priceTiers.map((tier) => tier.price))
+                      : null;
                     const isParty = product.categorySlug === 'party';
-                    const priceLabel = isParty
+                    const displayBasePrice =
+                      lowestTierPrice !== null ? Math.min(product.basePrice, lowestTierPrice) : product.basePrice;
+                    const priceLabel = product.priceTiers?.length
+                      ? `A partir de ${formatPrice(displayBasePrice)}`
+                      : isParty
                       ? `${formatPrice(product.basePrice)} cada`
                       : hasSizes
                         ? `A partir de ${formatPrice(product.basePrice)}`

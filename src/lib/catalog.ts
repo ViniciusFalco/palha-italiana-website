@@ -44,6 +44,7 @@ export type UIProduct = {
   requiresRibbonColor?: boolean;
   requiresFormColor?: boolean;
   sizeOptions?: Array<{ id?: string; size: string; price: number; optionKey: string }>;
+  priceTiers?: Array<{ minQuantity: number; maxQuantity?: number | null; price: number }>;
 };
 
 export async function fetchCatalog(): Promise<UIProduct[]> {
@@ -147,11 +148,45 @@ export async function fetchCatalog(): Promise<UIProduct[]> {
     bySku.set(row.sku, arr);
   });
 
+  const productIds = Array.from(idsBySku.values()).filter(Boolean);
+  const priceTiersByProductId = new Map<string, Array<{ minQuantity: number; maxQuantity: number | null; price: number }>>();
+  if (productIds.length > 0) {
+    try {
+      const { data: quantityPrices, error: quantityPricesError } = await supabase
+        .from('product_quantity_prices')
+        .select('product_id, min_quantity, max_quantity, unit_price_cents')
+        .in('product_id', productIds)
+        .order('min_quantity', { ascending: true });
+
+      if (quantityPricesError) {
+        throw quantityPricesError;
+      }
+
+      (quantityPrices ?? []).forEach((row) => {
+        const productId = row.product_id as string | undefined;
+        const minQuantity = Number(row.min_quantity);
+        const maxQuantity = row.max_quantity === null ? null : Number(row.max_quantity);
+        const unitPriceCents = Number(row.unit_price_cents);
+        if (!productId || !Number.isFinite(minQuantity) || !Number.isFinite(unitPriceCents)) return;
+        const tiers = priceTiersByProductId.get(productId) ?? [];
+        tiers.push({
+          minQuantity,
+          maxQuantity: Number.isFinite(maxQuantity) ? maxQuantity : null,
+          price: unitPriceCents / 100,
+        });
+        priceTiersByProductId.set(productId, tiers);
+      });
+    } catch (err) {
+      console.warn('Falha ao carregar preços por quantidade do catálogo.', err);
+    }
+  }
+
   const products: UIProduct[] = [];
   for (const [sku, group] of bySku.entries()) {
     const meta = group[0];
     const hasOptions = group.some((g) => g.option_key);
     const productId = meta.product_id ?? idsBySku.get(sku);
+    const priceTiers = productId ? priceTiersByProductId.get(productId) : undefined;
 
     if (hasOptions) {
       const sizeOptions = group
@@ -186,6 +221,7 @@ export async function fetchCatalog(): Promise<UIProduct[]> {
         requiresRibbonColor: meta.requires_ribbon_color,
         requiresFormColor: meta.requires_form_color,
         sizeOptions,
+        priceTiers,
       });
     } else {
       const effective = group[0].effective_price_cents;
@@ -209,6 +245,7 @@ export async function fetchCatalog(): Promise<UIProduct[]> {
         requiresRibbonWidth: meta.requires_ribbon_width,
         requiresRibbonColor: meta.requires_ribbon_color,
         requiresFormColor: meta.requires_form_color,
+        priceTiers,
       });
     }
   }

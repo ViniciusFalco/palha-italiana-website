@@ -88,7 +88,7 @@ export interface ProductOption {
   sizeOptions?: { size: string; price: number; id?: string }[];
   minQuantity?: number;
   quickQuantities?: number[];
-  priceTiers?: { minQuantity: number; price: number }[];
+  priceTiers?: { minQuantity: number; maxQuantity?: number | null; price: number }[];
 }
 
 export interface FlavorOption {
