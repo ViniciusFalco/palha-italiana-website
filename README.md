@@ -8,6 +8,12 @@ Além da área pública para clientes, o sistema também conta com estrutura de 
 
 ## 📱 Preview do projeto
 
+Uma visão geral das principais telas do sistema, incluindo a experiência do cliente, fluxo de checkout e painel administrativo.
+
+---
+
+### 🛍️ Experiência do cliente
+
 <p align="center">
   <img src="docs/images/catalog-category-mobile.png" alt="Tela de categorias do catálogo mobile" width="220" />
   <img src="docs/images/catalog-product-mobile.png" alt="Tela de produtos do catálogo mobile" width="220" />
@@ -15,17 +21,42 @@ Além da área pública para clientes, o sistema também conta com estrutura de 
 </p>
 
 <p align="center">
-  <img src="docs/images/product-selector-2-mobile.png" alt="Tela de personalização do produto mobile" width="220" />
-  <img src="docs/images/Checkout-mobile.png" alt="Tela inicial do checkout mobile" width="220" />
-  <img src="docs/images/Checkout-part2-mobile.png" alt="Tela de continuação do checkout mobile" width="220" />
+  <sub><b>Catálogo por categorias</b></sub> •
+  <sub><b>Listagem de produtos</b></sub> •
+  <sub><b>Seleção e personalização do produto</b></sub>
 </p>
+
+---
+
+### 🧾 Fluxo de checkout
+
+<p align="center">
+  <img src="docs/images/product-selector-2-mobile.png" alt="Tela complementar de personalização do produto mobile" width="220" />
+  <img src="docs/images/Checkout-mobile.png" alt="Tela inicial do checkout mobile" width="220" />
+  <img src="docs/images/Checkout-part2-mobile.png" alt="Tela final do checkout mobile" width="220" />
+</p>
+
+<p align="center">
+  <sub><b>Detalhes do pedido</b></sub> •
+  <sub><b>Preenchimento de entrega</b></sub> •
+  <sub><b>Resumo final e envio</b></sub>
+</p>
+
+---
+
+### ⚙️ Painel administrativo
 
 <p align="center">
   <img src="docs/images/orders-mobile.png" alt="Tela de pedidos no painel administrativo mobile" width="220" />
   <img src="docs/images/sidebar-mobile.png" alt="Menu lateral do painel administrativo mobile" width="220" />
-  <img src="docs/images/product_category-mobile.png" alt="Tela de categoria de produto mobile" width="220" />
+  <img src="docs/images/product_category-mobile.png" alt="Tela de produtos e categorias no painel administrativo mobile" width="220" />
 </p>
 
+<p align="center">
+  <sub><b>Gestão de pedidos</b></sub> •
+  <sub><b>Navegação do painel</b></sub> •
+  <sub><b>Produtos e categorias</b></sub>
+</p>
 
 ---
 
