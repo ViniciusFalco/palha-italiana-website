@@ -39,7 +39,7 @@ const Footer = ({ className }: FooterProps) => {
 
           {/* Copyright */}
           <div className="text-gray-400 text-sm">
-            © 2025 Sweet Child. Todos os direitos reservados.
+            © 2026 Sweet Child. Todos os direitos reservados.
           </div>
         </div>
       </div>

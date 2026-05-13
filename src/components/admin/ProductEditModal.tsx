@@ -224,6 +224,11 @@ const toSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
+const shouldSyncGeneratedSlug = (currentValue: string | null | undefined, previousLabel: string) => {
+  const trimmedCurrentValue = currentValue?.trim() ?? '';
+  return !trimmedCurrentValue || trimmedCurrentValue === toSlug(previousLabel);
+};
+
 function centsToInput(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return '';
   const value = (cents / 100).toFixed(2);
@@ -1020,7 +1025,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
       options: prev.options.map((option) =>
         option.clientId !== optionClientId
           ? option
-          : key === 'label' && !option.value?.trim()
+          : key === 'label' && shouldSyncGeneratedSlug(option.value, option.label)
             ? {
                 ...option,
                 [key]: value,
@@ -1177,7 +1182,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
           options: key === 'input_type' && !isOptionBasedInputType(nextInputType) ? [] : field.options,
           [key]: normalizedValue,
         } as ProductDetailField;
-        if (key === 'label' && !field.field_key.trim()) {
+        if (key === 'label' && shouldSyncGeneratedSlug(field.field_key, field.label)) {
           nextField.field_key = toSlug(String(normalizedValue ?? ''));
         }
         return nextField;
@@ -1331,7 +1336,7 @@ export default function ProductEditModal({ productId, onClose, onSaved, onDelete
                         ...opt,
                         [key]: normalizedValue,
                       } as ProductDetailOption;
-                      if (key === 'label' && !opt.value?.trim()) {
+                      if (key === 'label' && shouldSyncGeneratedSlug(opt.value, opt.label)) {
                         nextOption.value = toSlug(String(normalizedValue ?? ''));
                       }
                       return nextOption;
