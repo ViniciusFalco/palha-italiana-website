@@ -22,6 +22,15 @@ const sections = [
     ],
   },
   {
+    title: 'Sistema',
+    links: [
+      {
+        to: '/admin/configurar',
+        label: 'Configurar',
+      },
+    ],
+  },
+  {
     title: 'Cliente',
     links: [
       {

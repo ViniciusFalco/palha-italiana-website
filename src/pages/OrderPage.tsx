@@ -3,7 +3,7 @@ import Footer from '../components/Footer';
 import Checkout from '../components/Checkout';
 import ProductSelector from '../components/ProductSelector';
 import { FaShoppingCart, FaPlus, FaArrowLeft, FaUserShield } from 'react-icons/fa';
-import type { CartItem, FormData, ProductOption } from '../types';
+import type { CartItem, CheckoutPricingPayload, FormData, ProductOption } from '../types';
 import type { Category } from '../types/product';
 import { supabase } from '../lib/supabase';
 import { createPublicUuid, insertPublicRows } from '../lib/supabasePublic';
@@ -435,7 +435,7 @@ const OrderPage = () => {
     }
   };
 
-  const handleCompleteOrder = async (formData: FormData, total: number) => {
+  const handleCompleteOrder = async (formData: FormData, pricing: CheckoutPricingPayload) => {
     const addressLine =
       (formData.address && formData.address.trim()) ||
       [
@@ -448,12 +448,22 @@ const OrderPage = () => {
         .filter(Boolean)
         .join(' • ');
 
+    const formatCents = (cents: number) => `R$ ${(Math.max(0, cents) / 100).toFixed(2).replace('.', ',')}`;
+    const formatDeliveryDate = (value?: string | null) => {
+      if (!value) return 'Não informada';
+      const [year, month, day] = value.split('-').map(Number);
+      if (!year || !month || !day) return value;
+      return new Intl.DateTimeFormat('pt-BR').format(new Date(year, month - 1, day));
+    };
+
     const paymentLabel =
       formData.paymentMethod === 'credit'
-        ? 'Cartão de Crédito'
+        ? 'Cartão de crédito'
         : formData.paymentMethod === 'debit'
-          ? 'Cartão de Débito'
-          : 'Pix';
+          ? 'Cartão de débito'
+          : formData.paymentMethod === 'cash'
+            ? 'Dinheiro'
+            : 'Pix';
 
     const orderItemsText = cartItems
       .map((item) => {
@@ -469,19 +479,36 @@ const OrderPage = () => {
           const extras = item.details.map((d) => `${d.label}: ${d.displayValue ?? d.value}`).join('; ');
           itemText += ` - Extras: ${extras}`;
         }
-        itemText += ` - R$ ${(item.price * item.quantity).toFixed(2)}`;
+        itemText += ` - ${formatCents(Math.round(item.price * item.quantity * 100))}`;
         return itemText;
       })
       .join('\n');
 
-    const totalCents = Math.round(total * 100);
+    const subtotalCents = Math.max(0, Math.round(pricing.subtotal_cents));
+    const shippingCents = Math.max(0, Math.round(pricing.shipping_cents));
+    const discountCents = Math.max(0, Math.round(pricing.discount_cents));
+    const totalCents = Math.max(0, Math.round(pricing.total_cents));
+    const deliveryDate = formData.deliveryDate || null;
+    const cashChangeForCents =
+      formData.paymentMethod === 'cash' && formData.cashChangeNeeded ? formData.cashChangeForCents ?? null : null;
+    const cashChangeLabel =
+      formData.paymentMethod === 'cash'
+        ? cashChangeForCents
+          ? `Troco para ${formatCents(cashChangeForCents)}`
+          : 'Sem troco'
+        : null;
     const customerEmail = (formData as any).email ?? null;
-    const eventDate = (formData as any).eventDate ?? (formData as any).event_date ?? null;
+    const eventDate = deliveryDate ?? (formData as any).eventDate ?? (formData as any).event_date ?? null;
     const orderNote = (formData as any).note ?? (formData as any).observation ?? null;
     const noteWithCheckoutDetails = [
       orderNote,
+      deliveryDate ? `Entrega: ${formatDeliveryDate(deliveryDate)}` : null,
       addressLine ? `Endereço: ${addressLine}` : null,
       `Pagamento: ${paymentLabel}`,
+      cashChangeLabel,
+      pricing.coupon_code && discountCents > 0
+        ? `Cupom: ${pricing.coupon_code} (-${formatCents(discountCents)})`
+        : null,
     ]
       .filter(Boolean)
       .join('\n');
@@ -493,6 +520,7 @@ const OrderPage = () => {
       customer_phone: formData.phone,
       customer_email: customerEmail || null,
       event_date: eventDate || null,
+      delivery_date: deliveryDate,
       note: noteWithCheckoutDetails || null,
       status: 'pending',
       total_cents: totalCents,
@@ -501,8 +529,18 @@ const OrderPage = () => {
       payment_due: true,
     };
 
-    const addressOrderPayload = {
+    const pricingOrderPayload = {
       ...baseOrderPayload,
+      subtotal_cents: subtotalCents,
+      shipping_cents: shippingCents,
+      discount_cents: discountCents,
+      coupon_id: pricing.coupon_id || null,
+      coupon_code: pricing.coupon_code || null,
+      cash_change_for_cents: cashChangeForCents,
+    };
+
+    const addressOrderPayload = {
+      ...pricingOrderPayload,
       customer_address: addressLine || null,
       address_street: formData.street?.trim() || null,
       address_number: formData.houseNumber?.trim() || null,
@@ -520,8 +558,27 @@ const OrderPage = () => {
     let { error: orderError } = await insertPublicRows<null>('orders', addressOrderPayload);
 
     if (orderError?.code === 'PGRST204' || orderError?.code === '42703') {
-      const retry = await insertPublicRows<null>('orders', baseOrderPayload);
+      const legacyAddressPayload = {
+        ...baseOrderPayload,
+        customer_address: addressLine || null,
+        address_street: formData.street?.trim() || null,
+        address_number: formData.houseNumber?.trim() || null,
+        address_complement:
+          formData.noComplement || !formData.addressComplement?.trim() ? null : formData.addressComplement.trim(),
+        address_neighborhood: formData.neighborhood?.trim() || null,
+        address_city: formData.city?.trim() || null,
+        address_state: formData.state?.trim() || null,
+        address_cep: formData.cep?.trim() || null,
+        address_latitude: typeof formData.addressLatitude === 'number' ? formData.addressLatitude : null,
+        address_longitude: typeof formData.addressLongitude === 'number' ? formData.addressLongitude : null,
+        address_source: formData.addressSource || null,
+      };
+      const retry = await insertPublicRows<null>('orders', legacyAddressPayload);
       orderError = retry.error;
+      if (orderError?.code === 'PGRST204' || orderError?.code === '42703') {
+        const baseRetry = await insertPublicRows<null>('orders', baseOrderPayload);
+        orderError = baseRetry.error;
+      }
     }
 
     if (orderError) {
@@ -620,10 +677,18 @@ const OrderPage = () => {
       }
     }
 
-    let message = `*NOVO PEDIDO - PALHA ITALIANA*\n\n*Cliente:* ${formData.name}\n*Telefone:* ${formData.phone}\n*Endereço:* ${
-      addressLine || 'Não informado'
-    }\n*Pagamento:* ${paymentLabel}\n\n*ITENS DO PEDIDO:*\n${orderItemsText}\n\n*TOTAL:* R$ ${total.toFixed(2)}\n`;
-    message += `*Horário do pedido:* ${new Date().toLocaleString('pt-BR')}`;
+    const couponLines =
+      discountCents > 0 && pricing.coupon_code
+        ? `\n*Cupom:* ${pricing.coupon_code}\n*Desconto:* -${formatCents(discountCents)}`
+        : '';
+    const cashLine = cashChangeLabel ? `\n*Troco:* ${cashChangeLabel}` : '';
+    let message = `*Nova encomenda - Sweet Child*\n\n`;
+    message += `*Cliente*\nNome: ${formData.name}\nTelefone: ${formData.phone}\n\n`;
+    message += `*Entrega*\nData: ${formatDeliveryDate(deliveryDate)}\nEndereço: ${addressLine || 'Não informado'}\n\n`;
+    message += `*Itens da encomenda*\n${orderItemsText}\n\n`;
+    message += `*Pagamento*\nForma: ${paymentLabel}${cashLine}${couponLines}\n\n`;
+    message += `*Resumo*\nSubtotal: ${formatCents(subtotalCents)}\nEntrega: ${formatCents(shippingCents)}\nTotal: ${formatCents(totalCents)}\n\n`;
+    message += `Pedido criado em ${new Date().toLocaleString('pt-BR')}`;
 
     localStorage.setItem('order_status', 'pending');
     const encodedMessage = encodeURIComponent(message);

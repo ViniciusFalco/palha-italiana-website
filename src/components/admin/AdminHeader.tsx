@@ -37,6 +37,12 @@ const HEADER_META = [
     description: 'Edite o catalogo com mais clareza, espaco e consistencia editorial.',
   },
   {
+    match: '/admin/configurar',
+    eyebrow: 'Regras do checkout',
+    title: 'Configurar pedidos',
+    description: 'Defina pedido minimo, cupons e descontos usados no fechamento do cliente.',
+  },
+  {
     match: '/admin/dashboard',
     eyebrow: 'Em desenvolvimento',
     title: 'Dashboard',

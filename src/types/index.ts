@@ -23,11 +23,14 @@ export interface CartItem {
 export interface FormData {
   name: string;
   phone: string;
+  deliveryDate: string;
   street: string;
   houseNumber: string;
   addressComplement?: string;
   noComplement: boolean;
-  paymentMethod: 'pix' | 'credit' | 'debit';
+  paymentMethod: 'pix' | 'credit' | 'debit' | 'cash';
+  cashChangeNeeded: boolean;
+  cashChangeForCents?: number | null;
   address?: string;
   cep?: string;
   neighborhood?: string;
@@ -38,11 +41,20 @@ export interface FormData {
   addressSource?: 'mapbox' | 'viacep' | 'map' | 'manual' | '';
 }
 
+export interface CheckoutPricingPayload {
+  subtotal_cents: number;
+  shipping_cents: number;
+  discount_cents: number;
+  total_cents: number;
+  coupon_id?: string | null;
+  coupon_code?: string | null;
+}
+
 export interface CheckoutProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
-  onCompleteOrder: (formData: FormData, total: number) => Promise<void>;
+  onCompleteOrder: (formData: FormData, pricing: CheckoutPricingPayload) => Promise<void>;
   removeCartItem?: (index: number) => void;
   clearCart?: () => void;
   updateItemQuantity?: (index: number, quantity: number) => void;

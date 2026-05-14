@@ -11,6 +11,7 @@ import ProductsPage from './pages/admin/ProductsPage';
 import WorkInProgressPage from './pages/admin/WorkInProgressPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage';
+import SettingsPage from './pages/admin/SettingsPage';
 
 
 
@@ -42,6 +43,7 @@ function App() {
           <Route path="financeiro" element={<WorkInProgressPage tabName="Financeiro" />} />
           <Route path="pedidos" element={<OrdersPage />} />
           <Route path="produtos" element={<ProductsPage />} />
+          <Route path="configurar" element={<SettingsPage />} />
           <Route path="recibos" element={<WorkInProgressPage tabName="Recibos" />} />
         </Route>
       </Routes>
