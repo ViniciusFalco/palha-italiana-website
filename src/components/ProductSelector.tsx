@@ -417,17 +417,17 @@ const ProductSelector = ({ product, onAddToCart, onClose, initialItem, isClosing
                     {product.name.charAt(0)}
                   </div>
                 )}
-                <div className="space-y-3">
-                  <h3 className={`font-bebas tracking-wide text-primary ${titleSizeClass}`}>
+                <div className="space-y-2">
+                  <h3 className={`font-bebas tracking-wide text-primary text-center ${titleSizeClass}`}>
                     {product.name}
                   </h3>
-                  <p className="text-sm leading-relaxed text-stone-600 sm:text-base">
-                    {product.description || 'Personalize este produto com as opcoes abaixo.'}
+                  <p className="text-sm leading-relaxed text-stone-600 sm:text-base text-center">
+                    {product.description || 'Personalize este produto com as opções abaixo.'}
                   </p>
-                  <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Preço unitário</p>
-                    <p className="mt-1 text-2xl font-extrabold text-stone-950">{formatPrice(unitPriceWithExtras)}</p>
-                    <p className="mt-1 text-sm text-stone-500">
+                  <div className="rounded-lg border border-stone-200 bg-pink-500 p-3 shadow-sm text-center">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white">Preço unitário</p>
+                    <p className="mt-1 text-2xl font-extrabold text-white">{formatPrice(unitPriceWithExtras)}</p>
+                    <p className="mt-1 text-sm text-white">
                       {nextTier
                         ? `A partir de ${nextTier.minQuantity} un: ${formatPrice(nextTier.price)} cada`
                         : `Pedido mínimo: ${tierStartQuantity} unidades`}

@@ -108,6 +108,72 @@ img[loading="lazy"].loaded {
   animation: fadeIn 0.3s ease-in-out;
 }
 
+@keyframes checkoutLookupReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .checkout-lookup-panel {
+    animation: checkoutLookupReveal 0.18s ease-out both;
+  }
+}
+
+@keyframes quickCartSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes quickCartInsert {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes quickCartControlPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 127, 0.36);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 0, 127, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .quick-cart-sheet {
+    animation: quickCartSheetIn 0.24s ease-out both;
+  }
+
+  .quick-cart-insert {
+    animation: quickCartInsert 0.42s cubic-bezier(0.2, 0.9, 0.2, 1.08) both;
+  }
+
+  .quick-cart-control-pulse {
+    animation: quickCartControlPulse 1.15s ease-out infinite;
+  }
+}
+
 /* Placeholder otimizado */
 .placeholder-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

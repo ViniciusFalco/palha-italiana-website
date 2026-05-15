@@ -1,5 +1,5 @@
 
-import { FaWhatsapp, FaInstagram } from 'react-icons/fa';
+import { FaWhatsapp, FaInstagram, FaUserShield } from 'react-icons/fa';
 
 type FooterProps = {
   className?: string;
@@ -16,7 +16,7 @@ const Footer = ({ className }: FooterProps) => {
           </div>
 
           {/* Social Media Icons */}
-          <div className="flex space-x-4 mb-4 md:mb-0">
+          <div className="mb-4 flex items-center gap-4 md:mb-0">
             <a
               href="https://wa.me/553221985767312"
               target="_blank"
@@ -34,6 +34,14 @@ const Footer = ({ className }: FooterProps) => {
               aria-label="Instagram"
             >
               <FaInstagram size={24} />
+            </a>
+            <a
+              href="/admin"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/35 transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              aria-label="Acessar painel admin"
+              title="Admin"
+            >
+              <FaUserShield size={16} />
             </a>
           </div>
 

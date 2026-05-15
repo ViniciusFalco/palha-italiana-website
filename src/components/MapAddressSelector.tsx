@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
+import { FaCheck, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
 import Map, { Marker, NavigationControl } from 'react-map-gl';
 import type { FormData } from '../types';
 import {
@@ -35,7 +35,11 @@ type ViaCepResponse = {
 type MapAddressSelectorProps = {
   value: FormData;
   onChange: (patch: Partial<FormData>) => void;
+  completed?: boolean;
+  onFinalFieldBlur?: () => void;
 };
+
+type LookupMode = 'address' | 'cep' | null;
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 const MAPBOX_BBOX = '-43.05,-21.75,-42.35,-21.1';
@@ -89,15 +93,32 @@ const extractPatchFromFeature = (
   };
 };
 
-export default function MapAddressSelector({ value, onChange }: MapAddressSelectorProps) {
+export default function MapAddressSelector({
+  value,
+  onChange,
+  completed = false,
+  onFinalFieldBlur,
+}: MapAddressSelectorProps) {
   const [mapOpen, setMapOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(value.address || value.street || '');
+  const [lookupMode, setLookupMode] = useState<LookupMode>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [cepInput, setCepInput] = useState(value.cep ?? '');
   const [suggestions, setSuggestions] = useState<MapboxFeature[]>([]);
   const [searching, setSearching] = useState(false);
   const [reverseLoading, setReverseLoading] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasAddressData = Boolean(
+    value.addressSource ||
+      value.address ||
+      value.city ||
+      value.street ||
+      value.houseNumber ||
+      value.neighborhood ||
+      value.addressLatitude ||
+      value.addressLongitude
+  );
+  const [fieldsVisible, setFieldsVisible] = useState(hasAddressData);
 
   const selectedArea = useMemo(
     () => getAreaFromText(value.city) ?? getAreaFromText(value.address) ?? DEFAULT_CENTER,
@@ -125,7 +146,13 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
   }, [value.addressLatitude, value.addressLongitude]);
 
   useEffect(() => {
-    if (!mapOpen || !hasToken || searchQuery.trim().length < 3) {
+    if (hasAddressData) {
+      setFieldsVisible(true);
+    }
+  }, [hasAddressData]);
+
+  useEffect(() => {
+    if (!mapOpen || lookupMode !== 'address' || !hasToken || searchQuery.trim().length < 3) {
       setSuggestions([]);
       setSearching(false);
       return;
@@ -167,7 +194,7 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [hasToken, mapOpen, searchQuery]);
+  }, [hasToken, lookupMode, mapOpen, searchQuery]);
 
   const updateAddress = (patch: Partial<FormData>) => {
     const next = { ...value, ...patch };
@@ -180,14 +207,22 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
   const openMap = () => {
     setMapOpen(true);
     setError(null);
-    setSearchQuery(value.address || value.street || '');
+    setLookupMode(null);
+    setSearchQuery('');
     setCepInput(value.cep ?? '');
   };
 
   const closeMap = () => {
     setMapOpen(false);
+    setLookupMode(null);
     setSuggestions([]);
     setError(null);
+  };
+
+  const selectLookupMode = (mode: Exclude<LookupMode, null>) => {
+    setLookupMode(mode);
+    setError(null);
+    setSuggestions([]);
   };
 
   const handleSelectSuggestion = (feature: MapboxFeature) => {
@@ -239,7 +274,6 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
         zoom: 14,
       }));
       setCepInput(formatCep(data.cep ?? digits));
-      setSearchQuery([data.logradouro, data.bairro, area.label].filter(Boolean).join(', '));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível buscar o CEP.');
     } finally {
@@ -282,7 +316,9 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
         addressSource: 'map',
       });
       if (feature) {
-        setSearchQuery(feature.place_name);
+        if (lookupMode === 'address') {
+          setSearchQuery(feature.place_name);
+        }
         setCepInput(patch?.cep ?? cepInput);
       }
     } catch (err) {
@@ -308,52 +344,56 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
   };
 
   const addressSummary = value.address || formatCheckoutAddress(value);
+  const labelClass = `text-xs font-semibold uppercase tracking-wide transition-colors duration-300 ${
+    completed ? 'text-white/90' : 'text-stone-500'
+  }`;
 
   return (
-    <section className="space-y-3 rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-stone-950">Endereço</h3>
-          <p className="text-xs text-stone-500">{selectedArea.label}, MG</p>
-        </div>
+    <div className="space-y-3">
+      <div className="space-y-3">
         <button
           type="button"
           onClick={openMap}
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 text-xs font-extrabold text-stone-800 transition hover:bg-white"
+          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary px-4 text-sm font-extrabold text-white shadow-lg shadow-primary/15 transition hover:bg-pink-600"
         >
           <FaMapMarkerAlt aria-hidden="true" />
           Apontar no mapa
         </button>
       </div>
 
-      <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Cidade</span>
-        <select
-          value={value.city ?? ''}
-          onChange={(event) => {
-            const area = DELIVERY_AREAS.find((item) => item.label === event.target.value);
-            updateAddress({
-              city: event.target.value,
-              state: 'MG',
-              addressLatitude: area?.latitude ?? value.addressLatitude,
-              addressLongitude: area?.longitude ?? value.addressLongitude,
-              addressSource: 'manual',
-            });
-          }}
-          className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm font-semibold text-stone-800 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
-        >
-          <option value="">Selecione a cidade</option>
-          {DELIVERY_AREAS.map((area) => (
-            <option key={area.label} value={area.label}>
-              {area.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_104px]">
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          fieldsVisible ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 space-y-3 overflow-hidden">
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Rua</span>
+          <span className={labelClass}>Cidade</span>
+          <select
+            value={value.city ?? ''}
+            onChange={(event) => {
+              const area = DELIVERY_AREAS.find((item) => item.label === event.target.value);
+              updateAddress({
+                city: event.target.value,
+                state: 'MG',
+                addressLatitude: area?.latitude ?? value.addressLatitude,
+                addressLongitude: area?.longitude ?? value.addressLongitude,
+                addressSource: 'manual',
+              });
+            }}
+            className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm font-semibold text-stone-800 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
+          >
+            <option value="">Selecione a cidade</option>
+            {DELIVERY_AREAS.map((area) => (
+              <option key={area.label} value={area.label}>
+                {area.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className={labelClass}>Rua</span>
           <input
             type="text"
             value={value.street}
@@ -362,60 +402,91 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
             className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
           />
         </label>
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Número</span>
+
+        <div className="grid grid-cols-[112px_1fr] gap-3">
+          <label className="block">
+            <span className={labelClass}>Número</span>
+            <input
+              type="text"
+              value={value.houseNumber}
+              onChange={(event) => updateAddress({ houseNumber: event.target.value, addressSource: 'manual' })}
+              placeholder="120"
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
+            />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Bairro</span>
+            <input
+              type="text"
+              value={value.neighborhood ?? ''}
+              onChange={(event) => updateAddress({ neighborhood: event.target.value, addressSource: 'manual' })}
+              onBlur={() => {
+                if (value.noComplement) {
+                  onFinalFieldBlur?.();
+                }
+              }}
+              placeholder="Bairro"
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
+            />
+          </label>
+        </div>
+
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            value.noComplement ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <label className="block">
+              <span className={labelClass}>Complemento</span>
+              <input
+                type="text"
+                value={value.addressComplement ?? ''}
+                onChange={(event) => updateAddress({ addressComplement: event.target.value, addressSource: 'manual' })}
+                onBlur={onFinalFieldBlur}
+                placeholder="Apto, bloco..."
+                className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
+              />
+            </label>
+          </div>
+        </div>
+
+        <label className="group flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm font-extrabold text-stone-700 transition hover:border-primary/30 hover:bg-white">
+          <span>Sem complemento</span>
           <input
-            type="text"
-            value={value.houseNumber}
-            onChange={(event) => updateAddress({ houseNumber: event.target.value, addressSource: 'manual' })}
-            placeholder="120"
-            className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
+            type="checkbox"
+            checked={value.noComplement}
+            onChange={(event) => {
+              updateAddress({
+                noComplement: event.target.checked,
+                addressComplement: event.target.checked ? '' : value.addressComplement,
+                addressSource: 'manual',
+              });
+              if (event.target.checked) {
+                onFinalFieldBlur?.();
+              }
+            }}
+            className="sr-only"
           />
+          <span
+            className={`flex h-6 w-11 items-center rounded-full border p-0.5 transition ${
+              value.noComplement ? 'border-primary bg-primary' : 'border-stone-300 bg-white'
+            }`}
+          >
+            <span
+              className={`flex h-[18px] w-[18px] items-center justify-center rounded-full text-white transition ${
+                value.noComplement ? 'translate-x-5 bg-white text-primary' : 'translate-x-0 bg-stone-300'
+              }`}
+            >
+              {value.noComplement && <FaCheck size={9} aria-hidden="true" />}
+            </span>
+          </span>
         </label>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bairro</span>
-          <input
-            type="text"
-            value={value.neighborhood ?? ''}
-            onChange={(event) => updateAddress({ neighborhood: event.target.value, addressSource: 'manual' })}
-            placeholder="Bairro"
-            className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Complemento</span>
-          <input
-            type="text"
-            value={value.addressComplement ?? ''}
-            onChange={(event) => updateAddress({ addressComplement: event.target.value, addressSource: 'manual' })}
-            disabled={value.noComplement}
-            placeholder="Apto, bloco..."
-            className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10 disabled:text-stone-400"
-          />
-        </label>
-      </div>
-
-      <label className="flex items-center gap-2 text-xs font-semibold text-stone-600">
-        <input
-          type="checkbox"
-          checked={value.noComplement}
-          onChange={(event) =>
-            updateAddress({
-              noComplement: event.target.checked,
-              addressComplement: event.target.checked ? '' : value.addressComplement,
-              addressSource: 'manual',
-            })
-          }
-          className="h-4 w-4 accent-primary"
-        />
-        Sem complemento
-      </label>
-
-      {addressSummary && (
-        <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs font-medium leading-relaxed text-stone-600">
+      {fieldsVisible && addressSummary && (
+        <div className="rounded-lg text-center bg-stone-50 px-3 py-2 text-xs font-medium leading-relaxed text-stone-600">
           {addressSummary}
         </div>
       )}
@@ -450,68 +521,118 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
             </div>
 
             <div className="max-h-[calc(92dvh-64px)] space-y-3 overflow-y-auto px-4 py-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-stone-500" htmlFor="checkout-address-search">
-                  Buscar endereço
-                </label>
-                <div className="relative">
-                  <input
-                    id="checkout-address-search"
-                    type="search"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder={hasToken ? 'Rua, número, bairro ou referência' : 'Busca por mapa indisponível'}
-                    disabled={!hasToken}
-                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:text-stone-400"
-                  />
-                  {suggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-56 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-xl">
-                      {suggestions.map((feature) => (
-                        <button
-                          type="button"
-                          key={feature.id}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            handleSelectSuggestion(feature);
-                          }}
-                          className="w-full border-b border-stone-100 px-3 py-2.5 text-left text-sm text-stone-800 last:border-b-0 hover:bg-stone-50"
-                        >
-                          {feature.place_name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {searching && <p className="text-xs text-stone-500">Buscando...</p>}
-              </div>
-
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">CEP</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={cepInput}
-                    onChange={(event) => setCepInput(formatCep(event.target.value))}
-                    onBlur={() => {
-                      if (cepInput.replace(/\D/g, '').length === 8) void handleCepLookup();
-                    }}
-                    placeholder="36770-000"
-                    className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleCepLookup}
-                  disabled={cepLoading}
-                  className="mt-6 h-12 rounded-lg bg-stone-900 px-4 text-sm font-bold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+              <div className="space-y-3">
+                <div
+                  className={`grid gap-2 transition-[grid-template-columns] duration-300 ease-out ${
+                    lookupMode
+                      ? '[grid-template-columns:minmax(0,1fr)_minmax(0,1fr)]'
+                      : '[grid-template-columns:minmax(0,1fr)]'
+                  }`}
                 >
-                  {cepLoading ? '...' : 'OK'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => selectLookupMode('address')}
+                    className={`overflow-hidden rounded-lg border px-3 text-sm font-extrabold transition-[min-height,transform,background-color,border-color,color,box-shadow] duration-300 ease-out ${
+                      lookupMode
+                        ? 'min-h-11'
+                        : 'min-h-[58px]'
+                    } ${
+                      lookupMode === 'address'
+                        ? 'border-primary bg-primary text-white shadow-lg shadow-primary/15'
+                        : 'border-stone-200 bg-white text-stone-800 hover:border-primary/35 hover:text-primary active:scale-[0.99]'
+                    }`}
+                  >
+                    Buscar endereço
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectLookupMode('cep')}
+                    className={`overflow-hidden rounded-lg border px-3 text-sm font-extrabold transition-[min-height,transform,background-color,border-color,color,box-shadow] duration-300 ease-out ${
+                      lookupMode
+                        ? 'min-h-11'
+                        : 'min-h-[58px]'
+                    } ${
+                      lookupMode === 'cep'
+                        ? 'border-primary bg-primary text-white shadow-lg shadow-primary/15'
+                        : 'border-stone-200 bg-white text-stone-800 hover:border-primary/35 hover:text-primary active:scale-[0.99]'
+                    }`}
+                  >
+                    Buscar CEP
+                  </button>
+                </div>
+
+                {lookupMode === 'address' && (
+                  <div className="checkout-lookup-panel relative z-40 space-y-2">
+                    <label
+                      className="text-xs font-semibold uppercase tracking-wide text-stone-500"
+                      htmlFor="checkout-address-search"
+                    >
+                      Endereço
+                    </label>
+                    <div className="relative z-40">
+                      <input
+                        id="checkout-address-search"
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder={hasToken ? 'Rua, número, bairro ou referência' : 'Busca por mapa indisponível'}
+                        disabled={!hasToken}
+                        autoFocus
+                        className="w-full rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:text-stone-400"
+                      />
+                      {suggestions.length > 0 && (
+                        <div className="relative z-[90] mt-2 max-h-64 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-2xl md:absolute md:left-0 md:right-0 md:top-[calc(100%+6px)] md:mt-0">
+                          {suggestions.map((feature) => (
+                            <button
+                              type="button"
+                              key={feature.id}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleSelectSuggestion(feature);
+                              }}
+                              className="w-full border-b border-stone-100 px-3 py-2.5 text-left text-sm text-stone-800 last:border-b-0 hover:bg-stone-50"
+                            >
+                              {feature.place_name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {searching && <p className="text-xs text-stone-500">Buscando...</p>}
+                  </div>
+                )}
+
+                {lookupMode === 'cep' && (
+                  <div className="checkout-lookup-panel grid grid-cols-[1fr_auto] gap-2">
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">CEP</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={cepInput}
+                        onChange={(event) => setCepInput(formatCep(event.target.value))}
+                        onBlur={() => {
+                          if (cepInput.replace(/\D/g, '').length === 8) void handleCepLookup();
+                        }}
+                        placeholder="36770-000"
+                        autoFocus
+                        className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm text-stone-950 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleCepLookup}
+                      disabled={cepLoading}
+                      className="mt-6 h-12 rounded-lg bg-stone-900 px-4 text-sm font-bold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+                    >
+                      {cepLoading ? '...' : 'OK'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {hasToken ? (
-                <div className="h-[320px] overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
+                <div className="relative z-0 h-[320px] overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
                   <Map
                     mapboxAccessToken={MAPBOX_TOKEN}
                     mapStyle="mapbox://styles/mapbox/streets-v12"
@@ -551,6 +672,6 @@ export default function MapAddressSelector({ value, onChange }: MapAddressSelect
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }

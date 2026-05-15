@@ -1366,7 +1366,7 @@ function ReceiptModal({ receipt, order, defaultReceiptNumber, onClose, onSaved }
                   className="admin-input"
                   value={draft.customer_name}
                   onChange={(event) => handleFieldChange('customer_name', event.target.value)}
-                  placeholder="Ex.: Maria Souza"
+                  placeholder="Coloque seu nome aqui"
                 />
               </label>
               <label className="admin-field">

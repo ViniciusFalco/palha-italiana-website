@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { FaArrowLeft, FaArrowRight, FaPen, FaTimes, FaTrash, FaWhatsapp } from 'react-icons/fa';
+import {
+  FaArrowLeft,
+  FaArrowRight,
+  FaCheck,
+  FaPen,
+  FaTimes,
+  FaTrash,
+  FaWhatsapp,
+  FaInfoCircle,
+  FaExclamationCircle,
+  FaShoppingBag,
+  FaQrcode,
+  FaCreditCard,
+  FaMoneyBillWave,
+  FaTicketAlt,
+  FaPlus,
+  FaShoppingCart,
+} from 'react-icons/fa';
 import type { CartItem, CheckoutProps, FormData } from '../types';
 import { useDocumentScrollLock } from '../hooks/useDocumentScrollLock';
 import MapAddressSelector from './MapAddressSelector';
@@ -11,21 +28,24 @@ import {
   type AppliedDiscountCoupon,
 } from '../lib/api/checkoutSettings';
 
-const PAYMENT_LABELS: Record<FormData['paymentMethod'], string> = {
+
+type PaymentMethod = Exclude<FormData['paymentMethod'], ''>;
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   pix: 'Pix',
   credit: 'Cartão de crédito',
   debit: 'Cartão de débito',
   cash: 'Dinheiro',
 };
 
-const PAYMENT_OPTIONS: Array<{ value: FormData['paymentMethod']; label: string }> = [
-  { value: 'pix', label: PAYMENT_LABELS.pix },
-  { value: 'credit', label: PAYMENT_LABELS.credit },
-  { value: 'debit', label: PAYMENT_LABELS.debit },
-  { value: 'cash', label: PAYMENT_LABELS.cash },
+const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string; icon: typeof FaQrcode }> = [
+  { value: 'pix', label: PAYMENT_LABELS.pix, icon: FaQrcode },
+  { value: 'credit', label: PAYMENT_LABELS.credit, icon: FaCreditCard },
+  { value: 'debit', label: PAYMENT_LABELS.debit, icon: FaCreditCard },
+  { value: 'cash', label: PAYMENT_LABELS.cash, icon: FaMoneyBillWave },
 ];
 
-const CHECKOUT_PROGRESS_KEY = 'checkout_progress_v1';
+const CHECKOUT_PROGRESS_KEY = 'checkout_progress_v2';
 const SHIPPING_CENTS = 200;
 const CHECKOUT_STEPS = [1, 2] as const;
 type CheckoutStep = (typeof CHECKOUT_STEPS)[number];
@@ -44,7 +64,7 @@ const initialFormState: FormData = {
   houseNumber: '',
   addressComplement: '',
   noComplement: false,
-  paymentMethod: 'pix',
+  paymentMethod: '',
   cashChangeNeeded: false,
   cashChangeForCents: null,
   address: '',
@@ -74,6 +94,16 @@ const parseCurrencyToCents = (value: string) => {
 const centsToInputValue = (cents: number | null | undefined) =>
   cents && cents > 0 ? (cents / 100).toFixed(2).replace('.', ',') : '';
 
+const formatPhoneInput = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits ? `(${digits}` : '';
+  if (digits.length <= 3) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2, 3)} ${digits.slice(3)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 3)} ${digits.slice(3, 7)}-${digits.slice(7)}`;
+};
+
+const getPhoneDigits = (value: string) => value.replace(/\D/g, '');
+
 const toInputDate = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -85,13 +115,16 @@ const sanitizeFormData = (value: unknown): FormData => {
   if (!value || typeof value !== 'object') return initialFormState;
   const parsed = value as Partial<FormData>;
   const paymentMethod =
-    parsed.paymentMethod === 'credit' || parsed.paymentMethod === 'debit' || parsed.paymentMethod === 'cash'
+    parsed.paymentMethod === 'pix' ||
+    parsed.paymentMethod === 'credit' ||
+    parsed.paymentMethod === 'debit' ||
+    parsed.paymentMethod === 'cash'
       ? parsed.paymentMethod
-      : 'pix';
+      : '';
 
   return {
     name: typeof parsed.name === 'string' ? parsed.name : '',
-    phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+    phone: typeof parsed.phone === 'string' ? formatPhoneInput(parsed.phone) : '',
     deliveryDate: typeof parsed.deliveryDate === 'string' ? parsed.deliveryDate : '',
     street: typeof parsed.street === 'string' ? parsed.street : '',
     houseNumber: typeof parsed.houseNumber === 'string' ? parsed.houseNumber : '',
@@ -173,6 +206,18 @@ const clearCheckoutProgress = () => {
   window.localStorage.removeItem(CHECKOUT_PROGRESS_KEY);
 };
 
+const cleanCartDetailLabel = (label: string) => {
+  const normalized = label.replace(/\?/g, '').trim();
+  const lower = normalized.toLowerCase();
+
+  if (lower.includes('tamanho') && lower.includes('torta')) return 'Tamanho';
+  if (lower.startsWith('qual tamanho')) return 'Tamanho';
+  if (lower.startsWith('qual sabor')) return 'Sabor';
+  if (lower.startsWith('qual cobertura')) return 'Cobertura';
+
+  return normalized.replace(/^qual\s+/i, '').trim();
+};
+
 const getCartItemMeta = (item: CartItem) => {
   const parts = [
     item.flavor && `Sabor: ${item.flavor}`,
@@ -185,10 +230,52 @@ const getCartItemMeta = (item: CartItem) => {
   ].filter(Boolean) as string[];
 
   const details = (item.details ?? [])
-    .map((detail) => `${detail.label}: ${detail.displayValue ?? detail.value}`)
-    .filter(Boolean);
+    .map((detail) => {
+      const value = detail.displayValue ?? detail.value;
+      if (!value) return null;
+
+      return `${cleanCartDetailLabel(detail.label)}: ${value}`;
+    })
+    .filter(Boolean) as string[];
 
   return [...parts, ...details].join(' • ');
+};
+
+const resolveCartItemImageSrc = (image?: string | null) => {
+  const src = image?.trim();
+  if (!src) return null;
+  if (/^(https?:|data:|blob:)/i.test(src) || src.startsWith('/')) return src;
+  if (src.startsWith('public/')) return `/${src.slice('public/'.length)}`;
+  return `/${src.replace(/^\.?\//, '')}`;
+};
+
+const CartItemImagePreview = ({ item }: { item: CartItem }) => {
+  const src = resolveCartItemImageSrc(item.image);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const visibleSrc = src && failedSrc !== src ? src : null;
+
+  useEffect(() => {
+    setFailedSrc(null);
+  }, [src]);
+
+  return (
+    <span className="relative flex h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-pink-100 ring-1 ring-stone-200">
+      <span className="absolute inset-0 flex items-center justify-center text-base font-extrabold text-primary">
+        {item.name.slice(0, 1).toUpperCase()}
+      </span>
+      {visibleSrc && (
+        <img
+          key={visibleSrc}
+          src={visibleSrc}
+          alt={item.name}
+          className="relative z-10 h-full w-full object-cover"
+          loading="eager"
+          decoding="async"
+          onError={() => setFailedSrc(visibleSrc)}
+        />
+      )}
+    </span>
+  );
 };
 
 const Checkout = ({
@@ -214,12 +301,21 @@ const Checkout = ({
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
+  const [couponSuccessAnimating, setCouponSuccessAnimating] = useState(false);
   const [cashModalOpen, setCashModalOpen] = useState(false);
+  const [clearCartModalOpen, setClearCartModalOpen] = useState(false);
   const [cashChangeInput, setCashChangeInput] = useState(() =>
     centsToInputValue(initialDraftRef.current.formData.cashChangeForCents)
   );
   const [cashChangeError, setCashChangeError] = useState<string | null>(null);
+  const [paymentExpanded, setPaymentExpanded] = useState(true);
+  const [deliveryExpanded, setDeliveryExpanded] = useState(true);
+  const [addressExpanded, setAddressExpanded] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
+  const wasDeliveryDetailsCompleteRef = useRef(false);
+  const enteredDeliveryStepRef = useRef(false);
+  const hasValidAddressRef = useRef(false);
 
   const subtotal = useMemo(
     () => cartItems.reduce((total: number, item: CartItem) => total + item.price * item.quantity, 0),
@@ -246,27 +342,37 @@ const Checkout = ({
   const hasValidAddress = Boolean(
     formData.street.trim() &&
       formData.houseNumber.trim() &&
+      formData.neighborhood?.trim() &&
       formData.city?.trim() &&
       isAllowedDeliveryArea(formData.city)
   );
   const hasValidDeliveryDate = Boolean(formData.deliveryDate && formData.deliveryDate >= todayInput);
+  const hasValidDeliveryDetails = Boolean(
+    formData.name.trim().length >= 2 && getPhoneDigits(formData.phone).length >= 10 && hasValidDeliveryDate
+  );
+  const hasSelectedPayment = Boolean(formData.paymentMethod);
   const hasValidCashPayment = Boolean(
     formData.paymentMethod !== 'cash' ||
       !formData.cashChangeNeeded ||
       ((formData.cashChangeForCents ?? 0) >= totalCents && (formData.cashChangeForCents ?? 0) > 0)
   );
-  const canProceedToCustomer = Boolean(cartItems.length && minimumReached && hasValidCashPayment);
+  const canProceedToCustomer = Boolean(cartItems.length && minimumReached && hasSelectedPayment && hasValidCashPayment);
   const canConfirmOrder = Boolean(
-    formData.name.trim() &&
-      formData.phone.trim() &&
-      hasValidDeliveryDate &&
+    hasValidDeliveryDetails &&
       hasValidAddress &&
       cartItems.length &&
       minimumReached &&
+      hasSelectedPayment &&
       hasValidCashPayment
   );
   const progressWidth = `${Math.round((step / CHECKOUT_STEPS.length) * 100)}%`;
   const appliedCouponCode = appliedCoupon?.code;
+  const deliveryDateLabel = formData.deliveryDate ? formData.deliveryDate.split('-').reverse().join('/') : '';
+  const addressCompleteCollapsed = hasValidAddress && !addressExpanded;
+  const deliveryCompleteCollapsed = hasValidDeliveryDetails && !deliveryExpanded;
+  const checkoutDetailsComplete = deliveryCompleteCollapsed && addressCompleteCollapsed;
+  const paymentCompleteCollapsed = hasSelectedPayment && !paymentExpanded;
+  const paymentLabel = formData.paymentMethod ? PAYMENT_LABELS[formData.paymentMethod] : 'Escolha uma forma de pagamento';
 
   useEffect(() => {
     saveCheckoutProgress({
@@ -275,6 +381,10 @@ const Checkout = ({
       formData,
     });
   }, [step, activeItemIndex, formData]);
+
+  useEffect(() => {
+    hasValidAddressRef.current = hasValidAddress;
+  }, [hasValidAddress]);
 
   useEffect(() => {
     let ignore = false;
@@ -309,6 +419,32 @@ const Checkout = ({
     setCouponMessage(null);
     if (step !== 1) setStep(1);
   }, [cartItems.length, step]);
+
+  useEffect(() => {
+    if (step !== 2) {
+      enteredDeliveryStepRef.current = false;
+      return;
+    }
+    if (enteredDeliveryStepRef.current) return;
+    enteredDeliveryStepRef.current = true;
+    setDeliveryExpanded(!hasValidDeliveryDetails);
+    setAddressExpanded(hasValidDeliveryDetails);
+    wasDeliveryDetailsCompleteRef.current = hasValidDeliveryDetails;
+  }, [hasValidDeliveryDetails, step]);
+
+  useEffect(() => {
+    if (step !== 2) return;
+    const wasComplete = wasDeliveryDetailsCompleteRef.current;
+    if (hasValidDeliveryDetails && !wasComplete) {
+      setDeliveryExpanded(false);
+      setAddressExpanded(true);
+    }
+    if (!hasValidDeliveryDetails && wasComplete) {
+      setDeliveryExpanded(true);
+      setAddressExpanded(false);
+    }
+    wasDeliveryDetailsCompleteRef.current = hasValidDeliveryDetails;
+  }, [hasValidDeliveryDetails, step]);
 
   useEffect(() => {
     if (!appliedCouponCode) return;
@@ -359,7 +495,7 @@ const Checkout = ({
   }, [isOpen, shouldRender]);
 
   const isVisible = isOpen || shouldRender;
-  useDocumentScrollLock(isVisible || cashModalOpen);
+  useDocumentScrollLock(isVisible || cashModalOpen || couponModalOpen || clearCartModalOpen);
 
   const resetCheckoutState = () => {
     setStep(1);
@@ -372,9 +508,17 @@ const Checkout = ({
     setCouponLoading(false);
     setCouponError(null);
     setCouponMessage(null);
+    setCouponModalOpen(false);
+    setCouponSuccessAnimating(false);
     setCashModalOpen(false);
+    setClearCartModalOpen(false);
     setCashChangeInput('');
     setCashChangeError(null);
+    setPaymentExpanded(true);
+    setDeliveryExpanded(true);
+    setAddressExpanded(false);
+    wasDeliveryDetailsCompleteRef.current = false;
+    enteredDeliveryStepRef.current = false;
     clearCheckoutProgress();
   };
 
@@ -382,7 +526,7 @@ const Checkout = ({
     const { name, value } = event.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'phone' ? formatPhoneInput(value) : value,
     }));
   };
 
@@ -400,7 +544,7 @@ const Checkout = ({
     setStep(2);
   };
 
-  const handlePaymentMethodSelect = (method: FormData['paymentMethod']) => {
+  const handlePaymentMethodSelect = (method: PaymentMethod) => {
     setFormData((prev) => ({
       ...prev,
       paymentMethod: method,
@@ -411,7 +555,9 @@ const Checkout = ({
       setCashChangeInput(centsToInputValue(formData.cashChangeForCents));
       setCashChangeError(null);
       setCashModalOpen(true);
+      return;
     }
+    setPaymentExpanded(false);
   };
 
   const handleCashNoChange = () => {
@@ -424,6 +570,7 @@ const Checkout = ({
     setCashChangeInput('');
     setCashChangeError(null);
     setCashModalOpen(false);
+    setPaymentExpanded(false);
   };
 
   const handleSaveCashChange = () => {
@@ -445,6 +592,7 @@ const Checkout = ({
     }));
     setCashChangeError(null);
     setCashModalOpen(false);
+    setPaymentExpanded(false);
   };
 
   const handleApplyCoupon = async () => {
@@ -474,6 +622,11 @@ const Checkout = ({
       setCouponCode(coupon.code);
       setAppliedCoupon(coupon);
       setCouponMessage(`Cupom ${coupon.code} aplicado.`);
+      setCouponSuccessAnimating(true);
+      window.setTimeout(() => {
+        setCouponSuccessAnimating(false);
+        setCouponModalOpen(false);
+      }, 700);
     } catch (error) {
       if (import.meta.env.DEV) {
         console.error('Checkout: erro ao validar cupom', error);
@@ -489,6 +642,7 @@ const Checkout = ({
     setCouponCode('');
     setCouponError(null);
     setCouponMessage(null);
+    setCouponSuccessAnimating(false);
   };
 
   const handleRedirect = async () => {
@@ -578,206 +732,297 @@ const Checkout = ({
           {step === 1 && (
             <form onSubmit={handleProceedToCustomer} className="flex min-h-full flex-col">
               <div className="flex-1 space-y-4 pb-32">
-                <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-extrabold text-stone-950">Carrinho</h3>
-                    {cartItems.length > 0 && clearCart && (
-                      <button
-                        type="button"
-                        className="text-xs font-bold text-red-600 hover:text-red-700"
-                        onClick={() => {
-                          if (!window.confirm('Deseja limpar todo o carrinho?')) return;
-                          clearCart();
-                          resetCheckoutState();
-                        }}
-                      >
-                        Limpar
-                      </button>
-                    )}
-                  </div>
+                <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+  <div className="mb-4 flex items-start justify-between gap-3">
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-100 text-primary">
+        <FaShoppingBag size={18} />
+      </span>
 
-                  <div className="space-y-2">
-                    {cartItems.length === 0 && (
-                      <p className="rounded-lg bg-stone-50 px-3 py-3 text-center text-sm text-stone-500">
-                        Seu carrinho está vazio.
-                      </p>
-                    )}
-                    {cartItems.map((item: CartItem, index: number) => {
-                      const isActive = activeItemIndex === index;
-                      const metaText = getCartItemMeta(item);
-                      return (
-                        <article
-                          key={`${item.name}-${index}`}
-                          className={`rounded-lg border p-3 transition ${
-                            isActive ? 'border-primary bg-pink-50' : 'border-stone-200 bg-stone-50'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setActiveItemIndex(isActive ? null : index)}
-                            className="flex w-full items-start justify-between gap-3 text-left"
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-bold leading-snug text-stone-950">{item.name}</span>
-                              {metaText && (
-                                <span className="mt-1 block text-xs leading-relaxed text-stone-500">{metaText}</span>
-                              )}
-                            </span>
-                            <span className="shrink-0 text-right">
-                              <span className="block text-xs font-bold text-stone-500">x{item.quantity}</span>
-                              <span className="block text-sm font-extrabold text-stone-950">
-                                {formatCurrency(item.price * item.quantity)}
-                              </span>
-                            </span>
-                          </button>
+      <div>
+        <h3 className="text-lg font-extrabold leading-tight text-stone-950">
+          Carrinho
+        </h3>
 
-                          {isActive && (
-                            <div className="mt-3 flex items-center gap-2">
-                              {onEditCartItem && (
-                                <button
-                                  type="button"
-                                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white text-sm font-bold text-stone-800 transition hover:bg-stone-50"
-                                  onClick={() => onEditCartItem(index)}
-                                >
-                                  <FaPen size={12} />
-                                  Editar
-                                </button>
-                              )}
-                              {removeCartItem && (
-                                <button
-                                  type="button"
-                                  className="flex h-10 w-12 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100"
-                                  onClick={() => removeCartItem(index)}
-                                  aria-label="Remover item"
-                                  title="Remover"
-                                >
-                                  <FaTrash size={13} />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
+        <p className="mt-0.5 text-sm font-semibold text-stone-500">
+          {cartItems.length === 1
+            ? '1 item no pedido'
+            : `${cartItems.length} itens no pedido`}
+        </p>
+      </div>
+    </div>
+
+    {cartItems.length > 0 && clearCart && (
+      <button
+        type="button"
+        className="pt-1 text-sm font-extrabold text-primary hover:text-pink-600"
+        onClick={() => setClearCartModalOpen(true)}
+      >
+        Limpar
+      </button>
+    )}
+  </div>
+
+  <div className="space-y-3">
+    {cartItems.length === 0 && (
+      <p className="rounded-xl bg-stone-50 px-4 py-4 text-center text-sm font-medium text-stone-500">
+        Seu carrinho está vazio.
+      </p>
+    )}
+
+    {cartItems.map((item: CartItem, index: number) => {
+      const isActive = activeItemIndex === index;
+      const metaText = getCartItemMeta(item);
+
+      return (
+        <article
+          key={`${item.name}-${index}`}
+          className={`rounded-2xl border p-4 transition ${
+            isActive
+              ? 'border-primary bg-pink-50'
+              : 'border-stone-200 bg-stone-50'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveItemIndex(isActive ? null : index)}
+            className="flex w-full items-start justify-between gap-3 text-left"
+          >
+            <span className="flex min-w-0 flex-1 gap-3">
+              <CartItemImagePreview item={item} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-extrabold leading-tight text-stone-950">
+                  {item.name}
+                </span>
+
+                {metaText && (
+                  <span className="mt-1 block text-sm font-medium leading-relaxed text-stone-500">
+                    {metaText}
+                  </span>
+                )}
+              </span>
+            </span>
+
+            <span className="shrink-0 text-right">
+              <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-stone-500 ring-1 ring-stone-200">
+                x{item.quantity}
+              </span>
+
+              <span className="mt-2 block text-base font-extrabold text-stone-950">
+                {formatCurrency(item.price * item.quantity)}
+              </span>
+            </span>
+          </button>
+
+          {isActive && (
+            <div className="mt-4 flex items-center gap-2 border-t border-stone-200 pt-3">
+              {onEditCartItem && (
+                <button
+                  type="button"
+                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white text-sm font-bold text-stone-800 transition hover:bg-stone-50"
+                  onClick={() => onEditCartItem(index)}
+                >
+                  <FaPen size={12} />
+                  Editar
+                </button>
+              )}
+
+              {removeCartItem && (
+                <button
+                  type="button"
+                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                  onClick={() => removeCartItem(index)}
+                >
+                  <FaTrash size={12} />
+                  Remover
+                </button>
+              )}
+            </div>
+          )}
+        </article>
+      );
+    })}
+  </div>
+</section>
 
                 {minimumEnabled && (
                   <section
-                    className={`rounded-lg border p-3 shadow-sm ${
-                      minimumReached ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+                    className={`overflow-hidden rounded-lg border p-3 shadow-sm transition-all duration-300 ease-out ${
+                      minimumReached ? 'border-pink-600 bg-pink-600' : 'border-amber-200 bg-amber-50'
                     }`}
                     aria-live="polite"
                   >
-                    <div className="mb-2 flex items-center justify-between gap-3 text-xs font-extrabold uppercase tracking-wide">
-                      <span className={minimumReached ? 'text-emerald-800' : 'text-amber-800'}>
+                    <div
+                      className={`flex items-center justify-between gap-3 text-xs font-extrabold uppercase tracking-wide transition-colors duration-300 ${
+                        minimumReached ? 'text-white' : 'text-amber-800'
+                      }`}
+                    >
+                      <span>
                         Pedido mínimo: {formatCurrencyFromCents(orderMinimumCents)}
                       </span>
-                      <span className={minimumReached ? 'text-emerald-700' : 'text-amber-700'}>
-                        {minimumReached ? 'Atingido' : `${formatCurrencyFromCents(minimumRemainingCents)} restantes`}
+                      <span
+                        className={`inline-flex items-center gap-2 ${
+                          minimumReached ? 'text-white' : 'text-amber-700'
+                        }`}
+                      >
+                        {minimumReached ? (
+                          <>
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                              <FaCheck size={10} aria-hidden="true" />
+                            </span>
+                            Atingido
+                          </>
+                        ) : (
+                          `${formatCurrencyFromCents(minimumRemainingCents)} restantes`
+                        )}
                       </span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/80">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          minimumReached ? 'bg-emerald-500' : 'bg-amber-500'
-                        }`}
-                        style={{ width: minimumProgressWidth }}
-                      />
+                    <div
+                      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                        minimumReached ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+                      }`}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/80">
+                          <div
+                            className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                            style={{ width: minimumProgressWidth }}
+                          />
+                        </div>
+                        <p className="mt-2 text-xs font-semibold text-amber-800">
+                          Faltam {formatCurrencyFromCents(minimumRemainingCents)} para realizar o pedido mínimo.
+                        </p>
+                      </div>
                     </div>
-                    <p className={`mt-2 text-xs font-semibold ${minimumReached ? 'text-emerald-800' : 'text-amber-800'}`}>
-                      {minimumReached
-                        ? 'Pedido mínimo atingido. Você já pode finalizar.'
-                        : `Faltam ${formatCurrencyFromCents(minimumRemainingCents)} para realizar o pedido mínimo.`}
-                    </p>
                   </section>
                 )}
 
-                <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-                  <h3 className="mb-3 text-sm font-extrabold text-stone-950">Pagamento</h3>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {PAYMENT_OPTIONS.map((method) => {
-                      const selected = formData.paymentMethod === method.value;
-                      return (
-                        <button
-                          key={method.value}
-                          type="button"
-                          onClick={() => handlePaymentMethodSelect(method.value)}
-                          className={`min-h-12 rounded-lg border px-2 text-xs font-extrabold transition ${
-                            selected
-                              ? 'border-primary bg-primary text-white shadow-sm'
-                              : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-white'
-                          }`}
-                          aria-pressed={selected}
-                        >
-                          {method.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {formData.paymentMethod === 'cash' && (
-                    <div className="mt-3 flex flex-col gap-2 rounded-lg bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-700 sm:flex-row sm:items-center sm:justify-between">
-                      <span>
-                        {formData.cashChangeNeeded && formData.cashChangeForCents
-                          ? `Troco para ${formatCurrencyFromCents(formData.cashChangeForCents)}`
-                          : 'Sem troco'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCashChangeInput(centsToInputValue(formData.cashChangeForCents));
-                          setCashChangeError(null);
-                          setCashModalOpen(true);
-                        }}
-                        className="font-extrabold text-primary"
+                <section
+                  className={`overflow-hidden rounded-lg border shadow-sm transition-all duration-300 ease-out ${
+                    paymentCompleteCollapsed
+                      ? 'border-pink-600 bg-pink-600'
+                      : 'border-stone-200 bg-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPaymentExpanded((current) => !current)}
+                    className={`relative flex w-full gap-3 px-4 transition-all duration-300 ease-out ${
+                      paymentCompleteCollapsed
+                        ? 'items-center justify-center py-2.5 text-center'
+                        : 'items-start justify-between py-3 text-left'
+                    }`}
+                    aria-expanded={paymentExpanded}
+                  >
+                    <span className="min-w-0">
+                      <span
+                        className={`flex items-center gap-2 text-sm font-extrabold transition-all duration-300 ${
+                          paymentCompleteCollapsed ? 'justify-center text-white' : 'text-stone-950'
+                        }`}
                       >
-                        Alterar troco
-                      </button>
+                        Pagamento
+                        {paymentCompleteCollapsed && (
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                            <FaCheck size={10} aria-hidden="true" />
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`mt-0.5 block text-xs font-semibold leading-relaxed transition-colors duration-300 ${
+                          paymentCompleteCollapsed ? 'text-white/90' : 'text-stone-500'
+                        }`}
+                      >
+                        {paymentLabel}
+                      </span>
+                    </span>
+                    <FaArrowRight
+                      size={13}
+                      className={`shrink-0 transition-transform duration-300 ${
+                        paymentCompleteCollapsed ? 'absolute right-4 text-white/80' : 'text-stone-500'
+                      } ${paymentExpanded ? 'rotate-90' : ''}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      paymentExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className={`min-h-0 overflow-hidden px-3 ${paymentExpanded ? 'pb-3' : 'pb-0'}`}>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {PAYMENT_OPTIONS.map((method) => {
+                          const selected = formData.paymentMethod === method.value;
+                          const Icon = method.icon;
+                          return (
+                            <button
+                              key={method.value}
+                              type="button"
+                              onClick={() => handlePaymentMethodSelect(method.value)}
+                              className={`flex min-h-16 flex-col items-center justify-center gap-2 rounded-lg border px-2 text-xs font-extrabold transition ${
+                                selected
+                                  ? 'border-primary bg-primary text-white shadow-sm'
+                                  : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-white'
+                              }`}
+                              aria-pressed={selected}
+                            >
+                              <Icon size={16} aria-hidden="true" />
+                              {method.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {formData.paymentMethod === 'cash' && (
+                        <div className="mt-3 flex flex-col gap-2 rounded-lg bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-700 sm:flex-row sm:items-center sm:justify-between">
+                          <span>
+                            {formData.cashChangeNeeded && formData.cashChangeForCents
+                              ? `Troco para ${formatCurrencyFromCents(formData.cashChangeForCents)}`
+                              : 'Sem troco'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCashChangeInput(centsToInputValue(formData.cashChangeForCents));
+                              setCashChangeError(null);
+                              setCashModalOpen(true);
+                            }}
+                            className="font-extrabold text-primary"
+                          >
+                            Alterar troco
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </section>
 
                 <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-                  <div className="mb-4 rounded-lg border border-stone-200 bg-stone-50 p-3">
-                    <h3 className="mb-3 text-sm font-extrabold text-stone-950">Cupom de desconto</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCouponModalOpen(true);
+                      setCouponError(null);
+                      setCouponMessage(null);
+                    }}
+                    className={`mb-4 flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-extrabold transition-all duration-300 ${
+                      appliedCoupon
+                        ? 'border-pink-600 bg-pink-600 text-white shadow-sm'
+                        : 'border-stone-200 bg-stone-50 text-stone-800 hover:border-primary/30 hover:bg-white hover:text-primary'
+                    }`}
+                  >
                     {appliedCoupon ? (
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-extrabold text-stone-950">{appliedCoupon.code}</p>
-                          <p className="text-xs font-semibold text-emerald-700">
-                            Desconto de {formatCurrencyFromCents(discountCents)} aplicado.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleRemoveCoupon}
-                          className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-extrabold text-stone-700 transition hover:bg-stone-100"
-                        >
-                          Remover
-                        </button>
-                      </div>
+                      <>
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                          <FaCheck size={10} aria-hidden="true" />
+                        </span>
+                        Cupom {appliedCoupon.code}: -{formatCurrencyFromCents(discountCents)}
+                      </>
                     ) : (
-                      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                        <input
-                          type="text"
-                          value={couponCode}
-                          onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
-                          placeholder="PALHA10"
-                          className={inputClass}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleApplyCoupon}
-                          disabled={couponLoading || !cartItems.length}
-                          className="rounded-lg bg-stone-950 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
-                        >
-                          {couponLoading ? 'Validando...' : 'Aplicar'}
-                        </button>
-                      </div>
+                      <>
+                        <FaPlus size={12} aria-hidden="true" />
+                        Cupom de desconto
+                      </>
                     )}
-                    {couponError && <p className="mt-2 text-xs font-semibold text-red-600">{couponError}</p>}
-                    {couponMessage && <p className="mt-2 text-xs font-semibold text-emerald-700">{couponMessage}</p>}
-                  </div>
+                  </button>
 
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between text-stone-600">
@@ -828,60 +1073,223 @@ const Checkout = ({
               className="flex min-h-full flex-col"
             >
               <div className="flex-1 space-y-4 pb-32">
-                <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-                  <h3 className="mb-3 text-sm font-extrabold text-stone-950">Dados da entrega</h3>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Nome</span>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleInputChange}
-                        required
-                        placeholder="Maria Souza"
-                        className={`${inputClass} mt-2`}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Telefone</span>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        required
-                        placeholder="(32) 99999-9999"
-                        className={`${inputClass} mt-2`}
-                      />
-                    </label>
-                    <label className="block sm:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Data de entrega</span>
-                      <input
-                        type="date"
-                        name="deliveryDate"
-                        value={formData.deliveryDate}
-                        min={todayInput}
-                        onChange={handleInputChange}
-                        required
-                        className={`${inputClass} mt-2`}
-                      />
-                    </label>
+                <section
+                  className={`overflow-hidden rounded-lg border shadow-sm transition-all duration-300 ease-out ${
+                    hasValidDeliveryDetails
+                      ? 'border-pink-600 bg-pink-600'
+                      : 'border-stone-200 bg-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryExpanded((current) => !current)}
+                    className={`relative flex w-full gap-3 px-4 py-3 transition-all duration-300 ease-out ${
+                      hasValidDeliveryDetails
+                        ? 'items-center justify-center text-center'
+                        : 'items-start justify-between text-left'
+                    }`}
+                    aria-expanded={deliveryExpanded}
+                  >
+                    <span className="min-w-0 transition-all duration-300 ease-out">
+                      <span
+                        className={`flex items-center gap-2 text-sm font-extrabold transition-all duration-300 ease-out ${
+                          hasValidDeliveryDetails ? 'justify-center text-white' : 'text-stone-950'
+                        }`}
+                      >
+                        Dados básicos
+                        {hasValidDeliveryDetails && (
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                            <FaCheck size={10} aria-hidden="true" />
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`mt-0.5 block whitespace-normal break-words text-xs font-semibold leading-relaxed transition-colors duration-300 ${
+                          hasValidDeliveryDetails ? 'text-white/90' : 'text-stone-500'
+                        }`}
+                      >
+                        {hasValidDeliveryDetails
+                          ? `${formData.name.trim()} • ${deliveryDateLabel}`
+                          : ''}
+                      </span>
+                    </span>
+                    <FaArrowRight
+                      size={13}
+                      className={`shrink-0 transition-transform duration-300 ${
+                        hasValidDeliveryDetails ? 'absolute right-4 text-white/80' : 'text-stone-500'
+                      } ${
+                        deliveryExpanded ? 'rotate-90' : ''
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      deliveryExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="grid grid-cols-1 gap-3 px-4 pb-4 sm:grid-cols-2">
+                        <label className="block">
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wide transition-colors duration-300 ${
+                              hasValidDeliveryDetails ? 'text-white/90' : 'text-stone-500'
+                            }`}
+                          >
+                            Nome
+                          </span>
+                          <input
+                            type="text"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleInputChange}
+                            required
+                            placeholder="Coloque seu nome aqui"
+                            className={`${inputClass} mt-2`}
+                          />
+                        </label>
+                        <label className="block">
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wide transition-colors duration-300 ${
+                              hasValidDeliveryDetails ? 'text-white/90' : 'text-stone-500'
+                            }`}
+                          >
+                            Telefone
+                          </span>
+                          <input
+                            type="tel"
+                            name="phone"
+                            value={formData.phone}
+                            onChange={handleInputChange}
+                            required
+                            placeholder="(32) 9 9999-9999"
+                            inputMode="tel"
+                            maxLength={16}
+                            className={`${inputClass} mt-2`}
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wide transition-colors duration-300 ${
+                              hasValidDeliveryDetails ? 'text-white/90' : 'text-stone-500'
+                            }`}
+                          >
+                            Data de entrega
+                          </span>
+                          <input
+                            type="date"
+                            name="deliveryDate"
+                            value={formData.deliveryDate}
+                            min={todayInput}
+                            onChange={handleInputChange}
+                            required
+                            className={`${inputClass} mt-2`}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
-                <MapAddressSelector value={formData} onChange={handleAddressChange} />
+                <section
+                  className={`overflow-hidden rounded-lg border shadow-sm transition-all duration-300 ease-out ${
+                    addressCompleteCollapsed
+                      ? 'border-pink-600 bg-pink-600'
+                      : hasValidDeliveryDetails
+                        ? 'border-stone-200 bg-white'
+                        : 'border-stone-200 bg-stone-50'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!hasValidDeliveryDetails) return;
+                      setAddressExpanded((current) => !current);
+                    }}
+                    disabled={!hasValidDeliveryDetails}
+                    className={`relative flex w-full gap-3 px-4 py-3 transition-all duration-300 ease-out disabled:cursor-not-allowed ${
+                      addressCompleteCollapsed
+                        ? 'items-center justify-center text-center'
+                        : 'items-start justify-between text-left'
+                    }`}
+                    aria-expanded={addressExpanded}
+                  >
+                    <span className="min-w-0 transition-all duration-300 ease-out">
+                      <span
+                        className={`flex items-center gap-2 text-sm font-extrabold transition-all duration-300 ease-out ${
+                          addressCompleteCollapsed ? 'justify-center text-white' : 'text-stone-950'
+                        }`}
+                      >
+                        Endereço
+                        {addressCompleteCollapsed && (
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                            <FaCheck size={10} aria-hidden="true" />
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`mt-0.5 block whitespace-normal break-words text-xs font-semibold leading-relaxed transition-colors duration-300 ${
+                          addressCompleteCollapsed ? 'text-white/90' : 'text-stone-500'
+                        }`}
+                      >
+                        {addressCompleteCollapsed
+                          ? formattedAddress
+                          : hasValidDeliveryDetails
+                            ? 'Cidade, rua, número e bairro'
+                            : 'Complete os dados básicos primeiro'}
+                      </span>
+                    </span>
+                    <FaArrowRight
+                      size={13}
+                      className={`shrink-0 transition-transform duration-300 ${
+                        addressCompleteCollapsed ? 'absolute right-4 text-white/80' : 'text-stone-500'
+                      } ${
+                        addressExpanded ? 'rotate-90' : ''
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      addressExpanded && hasValidDeliveryDetails
+                        ? 'grid-rows-[1fr] opacity-100'
+                        : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden px-3 pb-3">
+                      <MapAddressSelector
+                        value={formData}
+                        onChange={handleAddressChange}
+                        completed={addressCompleteCollapsed}
+                        onFinalFieldBlur={() => {
+                          window.setTimeout(() => {
+                            if (!hasValidAddressRef.current) return;
+                            setAddressExpanded(false);
+                          }, 0);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </section>
 
-                {!hasValidDeliveryDate && (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                    Escolha a data de entrega para finalizar.
-                  </p>
+                {!hasValidDeliveryDetails && (
+                  <div className="flex items-start gap-3 rounded-xl border border-pink-200 bg-pink-50 px-4 py-3">
+                    <FaInfoCircle className="mt-0.5 h-4 w-4 shrink-0 text-pink-600" />
+
+                    <p className="text-sm font-semibold leading-snug text-zinc-800">
+                      Preencha nome, telefone e data de entrega.
+                    </p>
+                  </div>
                 )}
 
-                {!hasValidAddress && (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                    Escolha uma área de entrega válida e informe rua e número.
-                  </p>
+                {hasValidDeliveryDetails && !hasValidAddress && (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <FaExclamationCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+
+                    <p className="text-sm font-semibold leading-snug text-amber-900">
+                      Escolha uma área de entrega válida e informe rua, número e bairro.
+                    </p>
+                  </div>
                 )}
 
                 {redirectError && (
@@ -890,18 +1298,36 @@ const Checkout = ({
                   </p>
                 )}
 
-                <section className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+                <section
+                  className={`rounded-lg border p-3 shadow-sm transition-all duration-300 ease-out ${
+                    checkoutDetailsComplete
+                      ? 'border-pink-600 bg-pink-600'
+                      : 'border-stone-200 bg-white'
+                  }`}
+                >
                   <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between text-stone-600">
+                    <div
+                      className={`flex items-center justify-between transition-colors duration-300 ${
+                        checkoutDetailsComplete ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
                       <span>Itens</span>
                       <span>{cartItems.length}</span>
                     </div>
-                    <div className="flex items-center justify-between text-stone-600">
+                    <div
+                      className={`flex items-center justify-between transition-colors duration-300 ${
+                        checkoutDetailsComplete ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
                       <span>Pagamento</span>
-                      <span>{PAYMENT_LABELS[formData.paymentMethod]}</span>
+                      <span>{paymentLabel}</span>
                     </div>
                     {formData.paymentMethod === 'cash' && (
-                      <div className="flex items-center justify-between text-stone-600">
+                      <div
+                        className={`flex items-center justify-between transition-colors duration-300 ${
+                          checkoutDetailsComplete ? 'text-white' : 'text-stone-600'
+                        }`}
+                      >
                         <span>Troco</span>
                         <span>
                           {formData.cashChangeNeeded && formData.cashChangeForCents
@@ -911,12 +1337,22 @@ const Checkout = ({
                       </div>
                     )}
                     {discountCents > 0 && (
-                      <div className="flex items-center justify-between text-emerald-700">
+                      <div
+                        className={`flex items-center justify-between transition-colors duration-300 ${
+                          checkoutDetailsComplete ? 'text-emerald-100' : 'text-emerald-700'
+                        }`}
+                      >
                         <span>Desconto{appliedCoupon ? ` (${appliedCoupon.code})` : ''}</span>
                         <span>-{formatCurrencyFromCents(discountCents)}</span>
                       </div>
                     )}
-                    <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-base font-extrabold text-stone-950">
+                    <div
+                      className={`flex items-center justify-between border-t pt-3 text-base font-extrabold transition-colors duration-300 ${
+                        checkoutDetailsComplete
+                          ? 'border-white/30 text-white'
+                          : 'border-stone-200 text-stone-950'
+                      }`}
+                    >
                       <span>Total</span>
                       <span>{formatCurrency(total)}</span>
                     </div>
@@ -950,6 +1386,160 @@ const Checkout = ({
             </form>
           )}
         </div>
+
+        {clearCartModalOpen && (
+          <div
+            className="fixed inset-0 z-[80] flex items-end bg-stone-950/70 backdrop-blur-sm md:items-center md:justify-center md:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Limpar carrinho"
+            onClick={() => setClearCartModalOpen(false)}
+          >
+            <div
+              className="w-full rounded-t-2xl bg-[#fbfaf9] p-4 shadow-2xl md:max-w-[420px] md:rounded-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-pink-100 text-primary">
+                  <FaShoppingCart size={18} aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-extrabold text-stone-950">Limpar carrinho?</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                    Todos os itens adicionados serão removidos do pedido atual.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setClearCartModalOpen(false)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-700"
+                  aria-label="Fechar confirmação"
+                >
+                  <FaTimes aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setClearCartModalOpen(false)}
+                  className="flex items-center justify-center rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-extrabold text-stone-800 transition hover:bg-stone-50"
+                >
+                  Manter itens
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearCart?.();
+                    resetCheckoutState();
+                  }}
+                  className="flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-primary/20 transition hover:bg-pink-600"
+                >
+                  Limpar carrinho
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {couponModalOpen && (
+          <div
+            className="fixed inset-0 z-[80] flex items-end bg-stone-950/70 backdrop-blur-sm md:items-center md:justify-center md:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cupom de desconto"
+            onClick={() => {
+              if (couponLoading) return;
+              setCouponModalOpen(false);
+              setCouponSuccessAnimating(false);
+            }}
+          >
+            <div
+              className={`w-full rounded-t-2xl bg-[#fbfaf9] p-4 shadow-2xl transition-all duration-300 md:max-w-[420px] md:rounded-2xl ${
+                couponSuccessAnimating ? 'scale-[0.98] ring-4 ring-emerald-300/60' : 'scale-100'
+              }`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-300 ${
+                      couponSuccessAnimating ? 'bg-emerald-500 text-white' : 'bg-pink-100 text-primary'
+                    }`}
+                  >
+                    {couponSuccessAnimating ? <FaCheck aria-hidden="true" /> : <FaTicketAlt aria-hidden="true" />}
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-stone-950">Cupom de desconto</h3>
+                    <p className="text-sm text-stone-600">
+                      {couponSuccessAnimating ? 'Cupom aplicado com sucesso.' : 'Informe o código do seu cupom.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCouponModalOpen(false);
+                    setCouponSuccessAnimating(false);
+                  }}
+                  disabled={couponLoading}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-700 disabled:opacity-50"
+                  aria-label="Fechar cupom"
+                >
+                  <FaTimes aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {appliedCoupon && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
+                    {appliedCoupon.code} aplicado: -{formatCurrencyFromCents(discountCents)}
+                  </div>
+                )}
+
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">Código do cupom</span>
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                    placeholder="PALHA10"
+                    className={`${inputClass} mt-2`}
+                    autoFocus
+                  />
+                </label>
+
+                {couponError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{couponError}</p>}
+                {couponMessage && (
+                  <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                    {couponMessage}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={handleApplyCoupon}
+                    disabled={couponLoading || !cartItems.length || couponSuccessAnimating}
+                    className="flex items-center justify-center rounded-lg bg-primary px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-primary/20 transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                  >
+                    {couponLoading ? 'Validando...' : couponSuccessAnimating ? 'Aplicado' : 'Aplicar'}
+                  </button>
+                  {appliedCoupon && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      disabled={couponLoading || couponSuccessAnimating}
+                      className="rounded-lg border border-stone-300 bg-white px-4 text-sm font-extrabold text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {cashModalOpen && (
           <div

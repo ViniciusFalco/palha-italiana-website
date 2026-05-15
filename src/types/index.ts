@@ -28,7 +28,7 @@ export interface FormData {
   houseNumber: string;
   addressComplement?: string;
   noComplement: boolean;
-  paymentMethod: 'pix' | 'credit' | 'debit' | 'cash';
+  paymentMethod: '' | 'pix' | 'credit' | 'debit' | 'cash';
   cashChangeNeeded: boolean;
   cashChangeForCents?: number | null;
   address?: string;
